@@ -1,4 +1,4 @@
-enum Font { 
+enum Font {
     ARIAL("Arial"),
     VERDANA("Verdana"),
     TIMES("Times New Roman"),
@@ -6,15 +6,22 @@ enum Font {
     SERIF("serif"),
     SANSSERIF("sans-serif");
 
-    final String fullName; 
+    final String fullName;
 
-    private Font(String fullName) { this.fullName = fullName; }
-    
-    public String toString() { return fullName;}
+    private Font(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String toString() {
+        return fullName;
+    }
 
     static enum Align {
         CENTER, LEFT, RIGHT;
-        public String toString() { return name().toLowerCase(); }    
+
+        public String toString() {
+            return name().toLowerCase();
+        }
     }
 }
 
@@ -28,17 +35,26 @@ class Turtle implements Clerk {
 
     Turtle(LiveView view, int width, int height) {
         this.view = view;
-        this.width  = Math.max(1, Math.abs(width));  // width is at least of size 1
+        this.width = Math.max(1, Math.abs(width)); // width is at least of size 1
         this.height = Math.max(1, Math.abs(height)); // height is at least of size 1
         ID = Clerk.getHashID(this);
         Clerk.load(view, "views/Turtle/turtle.js");
-        Clerk.write(view, "<canvas id='turtleCanvas" + ID + "' width='" + this.width + "' height='" + this.height + "' style='border:1px solid #000;'></canvas>");
+        Clerk.write(view, "<canvas id='turtleCanvas" + ID + "' width='" + this.width + "' height='" + this.height
+                + "' style='border:1px solid #000;'></canvas>");
         Clerk.script(view, "const turtle" + ID + " = new Turtle(document.getElementById('turtleCanvas" + ID + "'));");
     }
 
-    Turtle(LiveView view) { this(view, 500, 500); }
-    Turtle(int width, int height) { this(Clerk.view(), width, height); }
-    Turtle() { this(Clerk.view()); }
+    Turtle(LiveView view) {
+        this(view, 500, 500);
+    }
+
+    Turtle(int width, int height) {
+        this(Clerk.view(), width, height);
+    }
+
+    Turtle() {
+        this(Clerk.view());
+    }
 
     Turtle penDown() {
         Clerk.call(view, "turtle" + ID + ".penDown();");
@@ -71,7 +87,8 @@ class Turtle implements Clerk {
     }
 
     Turtle color(int red, int green, int blue) {
-        Clerk.call(view, "turtle" + ID + ".color('rgb(" + (red & 0xFF) + ", " + (green & 0xFF) + ", " + (blue & 0xFF) + ")');");
+        Clerk.call(view,
+                "turtle" + ID + ".color('rgb(" + (red & 0xFF) + ", " + (green & 0xFF) + ", " + (blue & 0xFF) + ")');");
         return this;
     }
 
@@ -98,7 +115,9 @@ class Turtle implements Clerk {
         return this;
     }
 
-    Turtle text(String text) { return text(text, textFont, textSize, textAlign); }
+    Turtle text(String text) {
+        return text(text, textFont, textSize, textAlign);
+    }
 
     Turtle moveTo(double x, double y) {
         Clerk.call(view, "turtle" + ID + ".moveTo(" + x + ", " + y + ");");
@@ -106,7 +125,7 @@ class Turtle implements Clerk {
     }
 
     Turtle lineTo(double x, double y) {
-    Clerk.call(view, "turtle" + ID + ".lineTo(" + x + ", " + y + ");");
-    return this;
+        Clerk.call(view, "turtle" + ID + ".lineTo(" + x + ", " + y + ");");
+        return this;
     }
 }
