@@ -10,7 +10,12 @@ class WebGL {
             console.error("WebGL is not supported by your browser.")
         }
         this.reset();
+
+        window.addEventListener('resize', () => {
+            this.reset();
+        });
     }
+
     reset() {
         resizeCanvasToDisplaySize(this.canvas);
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height); // NOTE: useless?
@@ -23,9 +28,4 @@ class WebGL {
 function resizeCanvasToDisplaySize(canvas) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    console.log("resize");
 }
-
-window.addEventListener('resize', () => {
-    gl.reset();
-});
