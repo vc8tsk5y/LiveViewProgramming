@@ -23,12 +23,9 @@ class WebGL {
 function resizeCanvasToDisplaySize(canvas) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-}
-
-function test() { //NOTE: there should only be one canvas anyway
-    const gl = new WebGL(document.getElehtentById('WebGLCanvas1234'));
+    console.log("resize");
 }
 
 window.addEventListener('resize', () => {
-    resizeCanvasToDisplaySize();
+    gl.reset();
 });

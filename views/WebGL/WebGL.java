@@ -1,5 +1,4 @@
 class WebGL implements Clerk {
-    final String ID;
     LiveView view;
     final int width, height;
 
@@ -7,13 +6,10 @@ class WebGL implements Clerk {
         this.view = view;
         this.width = Math.max(1, Math.abs(width)); // width is at least of size 1
         this.height = Math.max(1, Math.abs(height)); // height is at least of size 1
-        ID = Clerk.getHashID(this);
         Clerk.load(view, "views/WebGL/webGL.js");
-        Clerk.write(view, "<canvas id='WebGLCanvas" + ID + "' width='"
+        Clerk.write(view, "<canvas id='WebGLCanvas' width='"
             + this.width + "' height='" + this.height + "'></canvas>");
-        Clerk.script(view, "const gl" + ID +
-            " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
-        // Clerk.call(view, "test();");
+        Clerk.script(view, "const gl = new WebGL(document.getElementById('WebGLCanvas'));");
     }
 
     WebGL(LiveView view) {
@@ -29,7 +25,7 @@ class WebGL implements Clerk {
     }
 
     WebGL test() {
-        Clerk.call(view, "gl" + ID + ".test();");
+        Clerk.call(view, "gl.test();");
         return this;
     }
 }
