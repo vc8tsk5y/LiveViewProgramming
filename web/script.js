@@ -1,3 +1,9 @@
+import { glMatrix, mat4, quat, vec3 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/+esm';
+window.glMatrix = glMatrix;
+window.mat4 = mat4;
+window.quat = quat;
+window.vec3 = vec3;
+
 const loadedDiv = document.getElementById('loadMessage');
 
 function loadScript(src, onError = () => console.log('script loading failed: ', src)) {
