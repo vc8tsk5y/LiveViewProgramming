@@ -120,10 +120,10 @@ class WebGL {
         requestAnimationFrame(this.frame);
     }
 
-    addBlock(x, y, z) {
+    addBlock(x, y, z, blockType) {
         this.shapes.push(new Shape(
             vec3.fromValues(x, y, z),   // position
-            1,                          // scale
+            0.5,                        // scale
             this.UP_VEC,                // rotation axis
             0,                          // rotation angle
             this.cubeVao,               // vertex array object
