@@ -164,12 +164,35 @@ class LiveView {
         sseClientConnections.removeAll(deadConnections);
     }
 
+    void closeResponseContext(String path) {
+        try {
+            server.removeContext(path);
+            System.out.printf("Successfully removed context: %s%n", path);
+        } catch (IllegalArgumentException e) {
+            System.err.printf("Failed to remove context '%s': Context does not exist.%n", path);
+        } catch (Exception e) {
+            System.err.printf("Unexpected error while removing context '%s': %s%n", path, e.getMessage());
+        }
+    }
+
     void createResponseContext(String path, Consumer<String> delegate) {
         createResponseContext(path, delegate, "-1");
     }
 
     void createResponseContext(String path, Consumer<String> delegate, String id) {
         server.createContext(path, exchange -> {
+            // Add CORS headers
+            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "http://localhost:50001/");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, OPTIONS");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Content-Length");
+
+            // Handle OPTIONS (preflight) requests
+            if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+                return;
+            }
+
             if (!exchange.getRequestMethod().equalsIgnoreCase("post")) {
                 exchange.sendResponseHeaders(405, -1); // Method Not Allowed
                 return;
