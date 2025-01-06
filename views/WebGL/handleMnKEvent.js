@@ -1,48 +1,36 @@
 const mnKEvent = {
+    // set of currently pressed keys
+    activeKeys: new Set(),
+
     init: function() {
         // Add key listeners
-        document.addEventListener('keydown', (event) => this.handleKey(event));
+        document.addEventListener('keydown', (event) => this.handleKeyDown(event));
+        document.addEventListener('keyup', (event) => this.handleKeyUp(event));
 
         // Add mouse movement listener
-        this.addMouseMoveListener();
+        document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
 
         // Lock pointer for FPS-style camera control
-        document.addEventListener('click', () => {
-            document.body.requestPointerLock();
-        });
+        document.addEventListener('click', () => document.body.requestPointerLock());
     },
 
-    addMouseMoveListener: function() {
-        // Define the handler and store the reference
-        this.mouseMoveHandler = (event) => this.handleMouseMove(event);
-        document.addEventListener('mousemove', this.mouseMoveHandler);
-    },
-
-    removeMouseMoveListener: function() {
-        if (this.mouseMoveHandler) {
-            document.removeEventListener('mousemove', this.mouseMoveHandler);
-            this.mouseMoveHandler = null; // Clean up the reference
-        }
-    },
-
-    restartMouseMoveListener: function() {
-        // Remove and re-add the mousemove listener
-        this.removeMouseMoveListener();
-        this.addMouseMoveListener();
-    },
-
-    handleKey: function(event) {
-        // Prevent default behavior for game controls
-        if (['W', 'A', 'S', 'D', ' '].includes(event.key.toUpperCase())) {
+    handleKeyDown: function(event) {
+        // Prevent default behavior for game controls ('R' because i use colemak layout)
+        if (['W', 'A', 'S', 'D', ' ', 'R', 'C'].includes(event.key.toUpperCase())) {
             event.preventDefault();
         }
 
-        const keyData = {
-            key: event.key,
-            timestamp: Date.now() // NOTE: useless?
-        };
+        this.activeKeys.add(event.key);
 
-        this.sendUpdate(keyData);
+        // send
+        const keysArray = Array.from(this.activeKeys).sort();
+        this.sendUpdate({
+            keys: keysArray
+        });
+    },
+
+    handleKeyUp: function(event) {
+        this.activeKeys.delete(event.key.toLowerCase());
     },
 
     handleMouseMove: function(event) {
@@ -50,20 +38,17 @@ const mnKEvent = {
             const mouseData = {
                 mouseMoveX: event.movementX,
                 mouseMoveY: event.movementY,
-                timestamp: Date.now() // NOTE: useless?
             };
             this.sendUpdate(mouseData);
         }
     },
 
     sendUpdate: async function(data) {
-        const response = await fetch('http://localhost:' + window.location.port + '/mnkevent', {
+        fetch('http://localhost:' + window.location.port + '/mnkevent', {
             method: 'POST',
             body: JSON.stringify(data),
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
-// mnKEvent.init();
+mnKEvent.init();

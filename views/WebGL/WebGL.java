@@ -55,23 +55,13 @@ class WebGL implements Clerk {
     }
 
     public void handleMnKEvent() {
-        Clerk.call(view, "mnKEvent.init();"); // NOTE: maybe do this in js
         view.createResponseContext("/mnkevent", (data) -> {
-            // System.out.println(data); // debug
             if (data.contains("mouseMove")) {
                 // Parse the incoming JSON data
-                String[] parts = data.split(",");
+                String[] parts = data.replaceAll("[^0-9.,-]", "").split(",");
 
-                double mouseX = 0;
-                double mouseY = 0;
-
-                for (String part : parts) {
-                    if (part.contains("\"mouseMoveX\":")) {
-                        mouseX = Double.parseDouble(part.split(":")[1].trim());
-                    } else if (part.contains("\"mouseMoveY\":")) {
-                        mouseY = Double.parseDouble(part.split(":")[1].trim());
-                    }
-                }
+                double mouseX = Double.parseDouble(parts[0]);
+                double mouseY = Double.parseDouble(parts[1]);
 
                 // Update yaw and pitch
                 yaw -= mouseX * MOUSE_SENSITIVITY;
@@ -91,46 +81,58 @@ class WebGL implements Clerk {
                 frontVector[2] = Math.cos(radPitch) * Math.cos(radYaw);
                 frontVector = VectorUtils.normalize(frontVector);
 
-                // NOTE: debug
-                // System.out.println(yaw);
-                // System.out.println(pitch);
-                // for (double vec : frontVector) {
-                //     System.out.println(vec);
-                // }
-
                 updateCamera();
-            } else if (data.contains("key")) {
-                // parse json
-                String key = data.split("\"key\":\"")[1].split("\"")[0];
+            } else if (data.contains("keys")) {
+                // Parse the incoming JSON data
+                // Extract the part between the square brackets
+                String parts = data.substring(data.indexOf("[") + 1, data.indexOf("]"));
+
+                // Split the string by commas, removing the quotes
+                String[] keys = parts.replace("\"", "").split(",");
 
                 // Calculate right vector
                 double[] worldUp = { 0, 1, 0 };
                 double[] rightVector = VectorUtils.crossProduct(frontVector, worldUp);
 
                 // Handle movement
-                switch (key.toLowerCase()) {
-                    case "w": // Forward
-                        cameraPos[0] += frontVector[0] * MOVEMENT_SPEED;
-                        cameraPos[2] += frontVector[2] * MOVEMENT_SPEED;
-                        break;
-                    case "r": // Backward
-                        cameraPos[0] -= frontVector[0] * MOVEMENT_SPEED;
-                        cameraPos[2] -= frontVector[2] * MOVEMENT_SPEED;
-                        break;
-                    case "a": // Strafe left
-                        cameraPos[0] -= rightVector[0] * MOVEMENT_SPEED;
-                        cameraPos[2] -= rightVector[2] * MOVEMENT_SPEED;
-                        break;
-                    case "s": // Strafe right
-                        cameraPos[0] += rightVector[0] * MOVEMENT_SPEED;
-                        cameraPos[2] += rightVector[2] * MOVEMENT_SPEED;
-                        break;
-                    case " ": // Space bar
-                        cameraPos[1] += MOVEMENT_SPEED;
-                        break;
-                    case "c":
-                        cameraPos[1] -= MOVEMENT_SPEED;
-                        break;
+                for (String key : keys) {
+                    double[] movementVec = new double[3];
+                    switch (key.toLowerCase()) {
+                        case "w": // Forward
+                            movementVec[0] += frontVector[0] * MOVEMENT_SPEED;
+                            movementVec[2] += frontVector[2] * MOVEMENT_SPEED;
+                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                                    MOVEMENT_SPEED);
+                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                            break;
+                        case "r": // Backward
+                            movementVec[0] -= frontVector[0] * MOVEMENT_SPEED;
+                            movementVec[2] -= frontVector[2] * MOVEMENT_SPEED;
+                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                                    MOVEMENT_SPEED);
+                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                            break;
+                        case "a": // Strafe left
+                            movementVec[0] -= rightVector[0] * MOVEMENT_SPEED;
+                            movementVec[2] -= rightVector[2] * MOVEMENT_SPEED;
+                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                                    MOVEMENT_SPEED);
+                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                            break;
+                        case "s": // Strafe right
+                            movementVec[0] += rightVector[0] * MOVEMENT_SPEED;
+                            movementVec[2] += rightVector[2] * MOVEMENT_SPEED;
+                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                                    MOVEMENT_SPEED);
+                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                            break;
+                        case " ": // Space bar
+                            cameraPos[1] += MOVEMENT_SPEED;
+                            break;
+                        case "c":
+                            cameraPos[1] -= MOVEMENT_SPEED;
+                            break;
+                    }
                 }
                 updateCamera();
             }
@@ -280,6 +282,22 @@ public static class VectorUtils {
                 a[1] * b[2] - a[2] * b[1],
                 a[2] * b[0] - a[0] * b[2],
                 a[0] * b[1] - a[1] * b[0]
+        };
+    }
+
+    public static double[] vecAddition(double[] a, double[] b) {
+        return new double[] {
+                a[0] + b[0],
+                a[1] + b[1],
+                a[2] + b[2]
+        };
+    }
+
+    public static double[] vecMultiplication(double[] a, double k) {
+        return new double[] {
+                a[0] * k,
+                a[1] * k,
+                a[2] * k
         };
     }
 }
