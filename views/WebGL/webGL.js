@@ -55,6 +55,19 @@ class WebGL {
         }
         this.setupAttributesAndUniforms();
         this.setupVAO();
+
+        this.crosshairBuffer = createStaticVertexBuffer(this.gl, this.CROSSHAIR_VERTICES);
+        if (!this.crosshairBuffer) {
+            throw new Error('Failed to create crosshair buffer');
+        }
+
+        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
+        if (!this.program) {
+            throw new Error('Failed to create WebGL program');
+        }
+
+        this.setupAttributesAndUniforms();
+        this.setupVAO();
     }
 
     setupAttributesAndUniforms() {
@@ -175,6 +188,41 @@ class WebGL {
             20, 21, 22,
             20, 22, 23, // left
         ]);
+
+        // Crosshair geometry (lines in NDC space)
+        this.CROSSHAIR_VERTICES = new Float32Array([
+            // Horizontal line
+            -0.02, 0.0, 0.0, // Left point
+            0.02, 0.0, 0.0, // Right point
+            // Vertical line
+            0.0, -0.02, 0.0, // Bottom point
+            0.0, 0.02, 0.0, // Top point
+        ]);
+    }
+
+    drawCrosshair() {
+        const gl = this.gl;
+
+        gl.useProgram(this.program);
+
+        // Bind the crosshair buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.crosshairBuffer);
+
+        // Enable position attribute (assuming no color for simplicity)
+        gl.vertexAttribPointer(this.attributes.position, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(this.attributes.position);
+
+        // Identity matrices for world, view, and projection
+        const matIdentity = mat4.create();
+        gl.uniformMatrix4fv(this.uniforms.matWorld, false, matIdentity);
+        gl.uniformMatrix4fv(this.uniforms.matViewProj, false, matIdentity);
+
+        // Draw the crosshair lines
+        gl.drawArrays(gl.LINES, 0, 4);
+
+        // Cleanup
+        gl.disableVertexAttribArray(this.attributes.position);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
     resize() {
@@ -226,6 +274,9 @@ class WebGL {
         gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
 
         this.shapes.forEach(shape => shape.draw(gl, this.uniforms.matWorld));
+
+        // Draw the crosshair (after other objects)
+        this.drawCrosshair();
     }
 
     start() {
