@@ -13,6 +13,8 @@ class WebGL implements Clerk {
     private double pitch = 0; // Vertical rotation (up/down)
     private static final double MOUSE_SENSITIVITY = 0.2;
     private static final double MOVEMENT_SPEED = 0.5;
+    private static final double MAX_REACH = 5.0; // Maximum distance player can reach
+    private static final double RAY_STEP = 0.1; // How precisely to check along the ray
 
     // World
     private static final int CHUNK_SIZE = 16;
@@ -36,23 +38,15 @@ class WebGL implements Clerk {
         Clerk.load(view, "views/WebGL/webGL.js");
         Clerk.write(view, "<canvas id='WebGLCanvas" + ID + "'></canvas>");
         Clerk.script(view, "const gl" + ID + " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
-        setBlock(0, 0, 0, BlockType.STONE);
-        setBlock(15, 0, 0, BlockType.STONE);
-        setBlock(0, 0, 16, BlockType.STONE);
+        setBlock(0, 1, 0, BlockType.GRASS);
+        setBlock(15, 1, 0, BlockType.STONE);
         setBlock(0, 1, 16, BlockType.STONE);
-        setBlock(-17, 0, 0, BlockType.STONE);
-        setBlock(-17, 0, 1, BlockType.STONE);
+        setBlock(0, 2, 16, BlockType.STONE);
+        setBlock(-17, 1, 0, BlockType.STONE);
+        setBlock(-17, 1, 1, BlockType.STONE);
     }
 
-    // NOTE: HELPPPPPP:P fix when on better hardware?
-    public void restarteventlistener() {
-        view.closeResponseContext("/mnkevent");
-    }
-
-    public void restartMouseMoveListener() {
-        Clerk.call(view, "mnKEvent.restartMouseMoveListener();");
-    }
-
+    // maybe to much data is sent to quick
     public void handleMnKEvent() {
         view.createResponseContext("/mnkevent", (data) -> {
             if (data.contains("mouseMove")) {
@@ -83,24 +77,49 @@ class WebGL implements Clerk {
                 updateCamera();
             } else if (data.contains("mouseDown")) {
                 int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
+                RaycastResult result = raycastBlock();
+                if (result == null)
+                    return;
+                System.out.println(result.x);
+                System.out.println(result.y);
+                System.out.println(result.z);
+                System.out.println(result.distance);
+                System.out.println(result.hitFace);
+                System.out.println(result.blockType);
                 switch (button) {
-                    case 0:
-                        // Break block the player is looking at
-                        int[] block = getLookingAt(10.0); // 10 units range
-                        if (block != null) {
-                            setBlock(block[0], block[1], block[2], BlockType.AIR); // Remove the block
-                        }
+                    case 0: // Left click - Break block
+                        setBlock(result.x, result.y, result.z, BlockType.AIR);
                         break;
-                    case 2:
-                        // Place block in front of the block the player is looking at
-                        int[] placeBlock = getLookingAt(10.0);
-                        if (placeBlock != null) {
-                            // NOTE: what blockside am i looking at
-                            // Determine position to place the block
-                            // int placeX = targetBlock.x + (int) Math.signum(frontVector[0]);
-                            // int placeY = targetBlock.y + (int) Math.signum(frontVector[1]);
-                            // int placeZ = targetBlock.z + (int) Math.signum(frontVector[2]);
-                            // setBlock(placeX, placeY, placeZ, BlockType.STONE); // NOTE: Example: Place a stone block
+                    case 2: // Right click - Place block
+                        // Calculate the position of the new block based on the hit face
+                        int newX = result.x;
+                        int newY = result.y;
+                        int newZ = result.z;
+
+                        switch (result.hitFace) {
+                            case NORTH:
+                                newZ++;
+                                break;
+                            case SOUTH:
+                                newZ--;
+                                break;
+                            case EAST:
+                                newX++;
+                                break;
+                            case WEST:
+                                newX--;
+                                break;
+                            case UP:
+                                newY++;
+                                break;
+                            case DOWN:
+                                newY--;
+                                break;
+                        }
+
+                        // Check if the new position is empty and within bounds
+                        if (getBlock(newX, newY, newZ) == BlockType.AIR) {
+                            setBlock(newX, newY, newZ, BlockType.STONE); // You can change the block type
                         }
                         break;
                 }
@@ -186,70 +205,6 @@ class WebGL implements Clerk {
         chunk.setBlock(localX, localY, localZ, blockType);
     }
 
-    private int[] getLookingAt(double maxDistance) {
-        // Starting position (player's camera position)
-        double x = cameraPos[0];
-        double y = cameraPos[1];
-        double z = cameraPos[2];
-
-        // Direction (normalized front vector)
-        double dx = frontVector[0];
-        double dy = frontVector[1];
-        double dz = frontVector[2];
-
-        // Current voxel (rounded to nearest block)
-        int currentX = (int) Math.floor(x);
-        int currentY = (int) Math.floor(y);
-        int currentZ = (int) Math.floor(z);
-
-        // Step direction (+1 or -1)
-        int stepX = (int) Math.signum(dx);
-        int stepY = (int) Math.signum(dy);
-        int stepZ = (int) Math.signum(dz);
-
-        // Compute distances to the next voxel boundary
-        double tMaxX = intBound(x, dx);
-        double tMaxY = intBound(y, dy);
-        double tMaxZ = intBound(z, dz);
-
-        // Compute how far to step in each direction
-        double tDeltaX = Math.abs(1 / dx);
-        double tDeltaY = Math.abs(1 / dy);
-        double tDeltaZ = Math.abs(1 / dz);
-
-        // Iterate through the grid
-        // Adjust step size as needed Check if the current voxel contains a block
-        for (int i = 0; i < maxDistance / 0.1; i++) {
-            if (getBlock(currentX, currentY, currentZ) != BlockType.AIR) {
-                return new int[] { currentX, currentY, currentZ };
-            }
-
-            // Step to the next voxel
-            if (tMaxX < tMaxY && tMaxX < tMaxZ) {
-                currentX += stepX;
-                tMaxX += tDeltaX;
-            } else if (tMaxY < tMaxZ) {
-                currentY += stepY;
-                tMaxY += tDeltaY;
-            } else {
-                currentZ += stepZ;
-                tMaxZ += tDeltaZ;
-            }
-        }
-
-        // Return null if no block is found within range
-        return null;
-    }
-
-    // Helper method for getLookingAt: Calculate distance to next voxel boundary
-    private double intBound(double s, double ds) {
-        if (ds == 0)
-            return Double.POSITIVE_INFINITY; // No movement in this axis
-        if (ds > 0)
-            return (Math.ceil(s) - s) / ds; // Moving positive
-        return (s - Math.floor(s)) / -ds; // Moving negative
-    }
-
     public BlockType getBlock(int x, int y, int z) {
         Chunk chunk = chunks.get(getChunkHash(x, z));
 
@@ -263,13 +218,15 @@ class WebGL implements Clerk {
         return chunk.getBlock(localX, localY, localZ);
     }
 
-    private long getChunkHash(int x, int z) { // NOTE: what if numbers are extremely large/small
+    // NOTE: what if numbers are extremely large/small
+    // is this right pos for this method
+    private long getChunkHash(int x, int z) {
         int chunkX = x / CHUNK_SIZE;
         int chunkZ = z / CHUNK_SIZE;
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
     }
 
-    class Chunk { // NOTE: mussnt be subclass
+    class Chunk {
         private BlockType[][][] blocks;
 
         public Chunk(int x, int z) {
@@ -279,7 +236,8 @@ class WebGL implements Clerk {
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
                     for (int k = 0; k < CHUNK_SIZE; k++) {
-                        blocks[i][j][k] = BlockType.AIR;
+                        // NOTE: chunk blocks are not updated in js
+                        blocks[i][j][k] = (j == 0) ? BlockType.STONE : BlockType.AIR;
                     }
                 }
             }
@@ -303,99 +261,84 @@ class WebGL implements Clerk {
             }
         }
     }
-}
 
-public enum BlockType {
-    AIR(0),
-    STONE(1),
-    GRASS(2),
-    DIRT(3);
+    public RaycastResult raycastBlock() {
+        double[] startPos = cameraPos.clone();
+        double[] rayDir = frontVector.clone();
 
-    private final int id;
+        // Current position along the ray
+        double[] currentPos = startPos.clone();
 
-    BlockType(int id) {
-        this.id = id;
-    }
+        // Previous position (to determine which face was hit)
+        double[] prevPos = startPos.clone();
 
-    public int getId() {
-        return id;
-    }
+        for (double distance = 0; distance <= MAX_REACH; distance += RAY_STEP) {
+            // Store previous position
+            System.arraycopy(currentPos, 0, prevPos, 0, 3);
 
-    public static BlockType fromId(int id) {
-        for (BlockType type : values()) {
-            if (type.id == id) {
-                return type;
+            // Move along ray
+            currentPos[0] = startPos[0] + rayDir[0] * distance;
+            currentPos[1] = startPos[1] + rayDir[1] * distance;
+            currentPos[2] = startPos[2] + rayDir[2] * distance;
+
+            // Convert to block coordinates
+            int blockX = (int) Math.floor(currentPos[0]);
+            int blockY = (int) Math.floor(currentPos[1]);
+            int blockZ = (int) Math.floor(currentPos[2]);
+
+            // Check if we hit a non-air block
+            BlockType blockType = getBlock(blockX, blockY, blockZ);
+            if (blockType != BlockType.AIR) {
+                // Determine which face was hit by comparing previous position
+                Direction hitFace = determineHitFace(prevPos, currentPos, blockX, blockY, blockZ);
+
+                return new RaycastResult(blockX, blockY, blockZ, distance, hitFace, blockType);
             }
         }
-        throw new IllegalArgumentException("No BlockType with id: " + id);
+
+        return null; // No block found within reach
+    }
+
+    private Direction determineHitFace(double[] prevPos, double[] currentPos, int blockX, int blockY, int blockZ) {
+        // Calculate the exact point where the ray entered the block
+        double dx = currentPos[0] - prevPos[0];
+        double dy = currentPos[1] - prevPos[1];
+        double dz = currentPos[2] - prevPos[2];
+
+        // Find which component changed the most
+        double absX = Math.abs(dx);
+        double absY = Math.abs(dy);
+        double absZ = Math.abs(dz);
+
+        // The face is determined by which axis had the largest change
+        // and whether we were approaching from the positive or negative direction
+        // NOTE: might need to reverse west and east etc
+        if (absX >= absY && absX >= absZ) {
+            return dx > 0 ? Direction.WEST : Direction.EAST;
+        } else if (absY >= absX && absY >= absZ) {
+            return dy > 0 ? Direction.DOWN : Direction.UP;
+        } else {
+            return dz > 0 ? Direction.NORTH : Direction.SOUTH;
+        }
     }
 }
 
-public static class BlockInfo { // NOTE: static?
-    public final int x, y, z;
-    public final BlockType blockType;
+public class RaycastResult { // NOTE: why plubic
+    public final int x, y, z; // Position of the block hit
+    public final double distance; // Distance to the block
+    public final Direction hitFace; // Which face was hit
+    public final BlockType blockType; // Type of block that was hit
 
-    public BlockInfo(int x, int y, int z, BlockType blockType) {
+    public RaycastResult(int x, int y, int z, double distance, Direction hitFace, BlockType blockType) {
         this.x = x;
         this.y = y;
         this.z = z;
+        this.distance = distance;
+        this.hitFace = hitFace;
         this.blockType = blockType;
     }
 }
 
-public static class VectorUtils {
-    public static double[] normalize(double[] vector) {
-        if (vector == null || vector.length == 0) {
-            throw new IllegalArgumentException("Vector cannot be null or empty");
-        }
-
-        // Calculate magnitude (length) of vector
-        double magnitude = 0.0;
-        for (double component : vector) {
-            magnitude += component * component;
-        }
-        magnitude = Math.sqrt(magnitude);
-
-        // Check if vector is already normalized
-        if (magnitude == 1) {
-            return vector;
-        }
-
-        // Check if vector is a zero vector
-        if (magnitude == 0) {
-            throw new IllegalArgumentException("Cannot normalize a zero vector");
-        }
-
-        // Create normalized vector
-        double[] normalized = new double[vector.length];
-        for (int i = 0; i < vector.length; i++) {
-            normalized[i] = vector[i] / magnitude;
-        }
-
-        return normalized;
-    }
-
-    public static double[] crossProduct(double[] a, double[] b) {
-        return new double[] {
-                a[1] * b[2] - a[2] * b[1],
-                a[2] * b[0] - a[0] * b[2],
-                a[0] * b[1] - a[1] * b[0]
-        };
-    }
-
-    public static double[] vecAddition(double[] a, double[] b) {
-        return new double[] {
-                a[0] + b[0],
-                a[1] + b[1],
-                a[2] + b[2]
-        };
-    }
-
-    public static double[] vecMultiplication(double[] a, double k) {
-        return new double[] {
-                a[0] * k,
-                a[1] * k,
-                a[2] * k
-        };
-    }
+public enum Direction {
+    NORTH, SOUTH, EAST, WEST, UP, DOWN;
 }

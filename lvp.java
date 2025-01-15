@@ -164,17 +164,6 @@ class LiveView {
         sseClientConnections.removeAll(deadConnections);
     }
 
-    void closeResponseContext(String path) {
-        try {
-            server.removeContext(path);
-            System.out.printf("Successfully removed context: %s%n", path);
-        } catch (IllegalArgumentException e) {
-            System.err.printf("Failed to remove context '%s': Context does not exist.%n", path);
-        } catch (Exception e) {
-            System.err.printf("Unexpected error while removing context '%s': %s%n", path, e.getMessage());
-        }
-    }
-
     void createResponseContext(String path, Consumer<String> delegate) {
         createResponseContext(path, delegate, "-1");
     }
@@ -290,6 +279,8 @@ interface Clerk {
 /open views/TicTacToe/TicTacToe.java
 /open views/Dot/Dot.java
 /open views/Input/Slider.java
+/open views/WebGL/BlockType.java
+/open views/WebGL/VectorUtils.java
 /open views/WebGL/WebGL.java
 
 LiveView view = Clerk.view();

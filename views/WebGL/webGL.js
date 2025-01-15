@@ -26,7 +26,7 @@ class WebGL {
         this.resize();
         window.addEventListener('resize', this.resize.bind(this));
 
-        this.frame = () => { // NOTE: when are these frames generated ?? higher refresh rate faster game??
+        this.frame = () => {
             this.render();
             requestAnimationFrame(this.frame);
         }
@@ -256,8 +256,8 @@ class WebGL {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.enable(gl.DEPTH_TEST);
         gl.enable(gl.CULL_FACE);
-        gl.cullFace(gl.BACK);
-        gl.frontFace(gl.CCW);
+        gl.cullFace(gl.BACK); // NOTE: do i need this
+        gl.frontFace(gl.CCW); // NOTE: do i need this
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         gl.useProgram(this.program);
