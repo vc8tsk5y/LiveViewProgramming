@@ -42,7 +42,6 @@ class WebGL implements Clerk {
         setBlock(0, 1, 16, BlockType.STONE);
         setBlock(-17, 0, 0, BlockType.STONE);
         setBlock(-17, 0, 1, BlockType.STONE);
-        Clerk.call(view, "gl" + ID + ".start();");
     }
 
     // NOTE: HELPPPPPP:P fix when on better hardware?
@@ -71,7 +70,7 @@ class WebGL implements Clerk {
                 pitch = Math.max(-89, Math.min(89, pitch));
 
                 // Normalize yaw to 0-360 range
-                yaw = yaw % 360;
+                yaw = (yaw % 360 + 360) % 360;
 
                 // Calculate front Vector
                 double radYaw = Math.toRadians(yaw);
@@ -82,6 +81,29 @@ class WebGL implements Clerk {
                 frontVector = VectorUtils.normalize(frontVector);
 
                 updateCamera();
+            } else if (data.contains("mouseDown")) {
+                int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
+                switch (button) {
+                    case 0:
+                        // Break block the player is looking at
+                        int[] block = getLookingAt(10.0); // 10 units range
+                        if (block != null) {
+                            setBlock(block[0], block[1], block[2], BlockType.AIR); // Remove the block
+                        }
+                        break;
+                    case 2:
+                        // Place block in front of the block the player is looking at
+                        int[] placeBlock = getLookingAt(10.0);
+                        if (placeBlock != null) {
+                            // NOTE: what blockside am i looking at
+                            // Determine position to place the block
+                            // int placeX = targetBlock.x + (int) Math.signum(frontVector[0]);
+                            // int placeY = targetBlock.y + (int) Math.signum(frontVector[1]);
+                            // int placeZ = targetBlock.z + (int) Math.signum(frontVector[2]);
+                            // setBlock(placeX, placeY, placeZ, BlockType.STONE); // NOTE: Example: Place a stone block
+                        }
+                        break;
+                }
             } else if (data.contains("keys")) {
                 // Parse the incoming JSON data
                 // Extract the part between the square brackets
@@ -164,6 +186,70 @@ class WebGL implements Clerk {
         chunk.setBlock(localX, localY, localZ, blockType);
     }
 
+    private int[] getLookingAt(double maxDistance) {
+        // Starting position (player's camera position)
+        double x = cameraPos[0];
+        double y = cameraPos[1];
+        double z = cameraPos[2];
+
+        // Direction (normalized front vector)
+        double dx = frontVector[0];
+        double dy = frontVector[1];
+        double dz = frontVector[2];
+
+        // Current voxel (rounded to nearest block)
+        int currentX = (int) Math.floor(x);
+        int currentY = (int) Math.floor(y);
+        int currentZ = (int) Math.floor(z);
+
+        // Step direction (+1 or -1)
+        int stepX = (int) Math.signum(dx);
+        int stepY = (int) Math.signum(dy);
+        int stepZ = (int) Math.signum(dz);
+
+        // Compute distances to the next voxel boundary
+        double tMaxX = intBound(x, dx);
+        double tMaxY = intBound(y, dy);
+        double tMaxZ = intBound(z, dz);
+
+        // Compute how far to step in each direction
+        double tDeltaX = Math.abs(1 / dx);
+        double tDeltaY = Math.abs(1 / dy);
+        double tDeltaZ = Math.abs(1 / dz);
+
+        // Iterate through the grid
+        // Adjust step size as needed Check if the current voxel contains a block
+        for (int i = 0; i < maxDistance / 0.1; i++) {
+            if (getBlock(currentX, currentY, currentZ) != BlockType.AIR) {
+                return new int[] { currentX, currentY, currentZ };
+            }
+
+            // Step to the next voxel
+            if (tMaxX < tMaxY && tMaxX < tMaxZ) {
+                currentX += stepX;
+                tMaxX += tDeltaX;
+            } else if (tMaxY < tMaxZ) {
+                currentY += stepY;
+                tMaxY += tDeltaY;
+            } else {
+                currentZ += stepZ;
+                tMaxZ += tDeltaZ;
+            }
+        }
+
+        // Return null if no block is found within range
+        return null;
+    }
+
+    // Helper method for getLookingAt: Calculate distance to next voxel boundary
+    private double intBound(double s, double ds) {
+        if (ds == 0)
+            return Double.POSITIVE_INFINITY; // No movement in this axis
+        if (ds > 0)
+            return (Math.ceil(s) - s) / ds; // Moving positive
+        return (s - Math.floor(s)) / -ds; // Moving negative
+    }
+
     public BlockType getBlock(int x, int y, int z) {
         Chunk chunk = chunks.get(getChunkHash(x, z));
 
@@ -177,13 +263,13 @@ class WebGL implements Clerk {
         return chunk.getBlock(localX, localY, localZ);
     }
 
-    private long getChunkHash(int x, int z) {
+    private long getChunkHash(int x, int z) { // NOTE: what if numbers are extremely large/small
         int chunkX = x / CHUNK_SIZE;
         int chunkZ = z / CHUNK_SIZE;
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
     }
 
-    class Chunk {
+    class Chunk { // NOTE: mussnt be subclass
         private BlockType[][][] blocks;
 
         public Chunk(int x, int z) {
@@ -242,6 +328,18 @@ public enum BlockType {
             }
         }
         throw new IllegalArgumentException("No BlockType with id: " + id);
+    }
+}
+
+public static class BlockInfo { // NOTE: static?
+    public final int x, y, z;
+    public final BlockType blockType;
+
+    public BlockInfo(int x, int y, int z, BlockType blockType) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.blockType = blockType;
     }
 }
 

@@ -16,7 +16,6 @@ class WebGL {
             up: [0, 1, 0],
             right: [-1, 0, 0]
         };
-        this.isRunning = false;
         this.shapes = [];
         this.setupShaders();
         this.setupGeometry();
@@ -27,23 +26,15 @@ class WebGL {
         this.resize();
         window.addEventListener('resize', this.resize.bind(this));
 
-        let lastFrameTime = performance.now();
-        this.frame = () => {
-            if (!this.isRunning) return;
-            const thisFrameTime = performance.now();
-            const dt = (thisFrameTime - lastFrameTime) / 1000;
-            // const fps = 1000 / (thisFrameTime - lastFrameTime);
-            // console.log(fps);
-            lastFrameTime = thisFrameTime;
-
+        this.frame = () => { // NOTE: when are these frames generated ?? higher refresh rate faster game??
             this.render();
-
             requestAnimationFrame(this.frame);
         }
+        requestAnimationFrame(this.frame);
     }
 
     initializeBuffersAndProgram() {
-        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES);
+        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES); // NOTE: only cubes
         this.cubeIndices = createStaticIndexBuffer(this.gl, this.CUBE_INDICES);
         if (!this.cubeVertices || !this.cubeIndices) {
             throw new Error('Failed to create vertex or index buffers');
@@ -61,7 +52,7 @@ class WebGL {
             throw new Error('Failed to create crosshair buffer');
         }
 
-        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
+        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode); // NOTE: warum zwei mal
         if (!this.program) {
             throw new Error('Failed to create WebGL program');
         }
@@ -279,18 +270,6 @@ class WebGL {
         this.drawCrosshair();
     }
 
-    start() {
-        if (!this.isRunning) {
-            this.isRunning = true;
-            this.lastFrameTime = performance.now();
-            requestAnimationFrame(this.frame);
-        }
-    }
-
-    stop() {
-        this.isRunning = false;
-    }
-
     updateCamera(x, y, z, yawDegrees, pitchDegrees) {
         // Update position
         this.camera.position = [x, y, z];
@@ -450,14 +429,4 @@ function createInterleavedVao(gl, vertexBuffer, indexBuffer, attributes) {
     gl.bindVertexArray(null);
 
     return vao;
-}
-
-function normalizeAngle(angle) {
-    // Normalize angle to be between 0 and 360 degrees
-    return angle % 360;
-}
-
-function clampPitch(pitch) {
-    // Clamp pitch to prevent camera flipping
-    return Math.max(-89, Math.min(89, pitch));
 }

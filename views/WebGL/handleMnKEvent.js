@@ -7,8 +7,9 @@ const mnKEvent = {
         document.addEventListener('keydown', (event) => this.handleKeyDown(event));
         document.addEventListener('keyup', (event) => this.handleKeyUp(event));
 
-        // Add mouse movement listener
+        // Add mouse listener
         document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+        document.addEventListener('mousedown', (event) => this.handleMouseDown(event));
 
         // Lock pointer for FPS-style camera control
         document.addEventListener('click', () => document.body.requestPointerLock());
@@ -23,7 +24,7 @@ const mnKEvent = {
         this.activeKeys.add(event.key);
 
         // send
-        const keysArray = Array.from(this.activeKeys).sort();
+        const keysArray = Array.from(this.activeKeys);
         this.sendUpdate({
             keys: keysArray
         });
@@ -40,6 +41,14 @@ const mnKEvent = {
                 mouseMoveY: event.movementY,
             };
             this.sendUpdate(mouseData);
+        }
+    },
+
+    handleMouseDown: function(event) {
+        if (document.pointerLockElement) {
+            this.sendUpdate({
+                mouseDown: event.button
+            });
         }
     },
 
