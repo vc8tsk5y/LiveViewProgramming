@@ -14,7 +14,6 @@ class WebGL implements Clerk {
     private static final double MOUSE_SENSITIVITY = 0.2;
     private static final double MOVEMENT_SPEED = 0.5;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
-    private static final double RAY_STEP = 0.1; // How precisely to check along the ray
 
     // World
     private static final int CHUNK_SIZE = 16;
@@ -77,50 +76,14 @@ class WebGL implements Clerk {
                 updateCamera();
             } else if (data.contains("mouseDown")) {
                 int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
-                RaycastResult result = raycastBlock();
-                if (result == null)
-                    return;
-                System.out.println(result.x);
-                System.out.println(result.y);
-                System.out.println(result.z);
-                System.out.println(result.distance);
-                System.out.println(result.hitFace);
-                System.out.println(result.blockType);
                 switch (button) {
                     case 0: // Left click - Break block
-                        setBlock(result.x, result.y, result.z, BlockType.AIR);
+                        int[] destroy = raycastBlock(false);
+                        setBlock(destroy[0], destroy[1], destroy[2], BlockType.AIR);
                         break;
                     case 2: // Right click - Place block
-                        // Calculate the position of the new block based on the hit face
-                        int newX = result.x;
-                        int newY = result.y;
-                        int newZ = result.z;
-
-                        switch (result.hitFace) {
-                            case NORTH:
-                                newZ++;
-                                break;
-                            case SOUTH:
-                                newZ--;
-                                break;
-                            case EAST:
-                                newX++;
-                                break;
-                            case WEST:
-                                newX--;
-                                break;
-                            case UP:
-                                newY++;
-                                break;
-                            case DOWN:
-                                newY--;
-                                break;
-                        }
 
                         // Check if the new position is empty and within bounds
-                        if (getBlock(newX, newY, newZ) == BlockType.AIR) {
-                            setBlock(newX, newY, newZ, BlockType.STONE); // You can change the block type
-                        }
                         break;
                 }
             } else if (data.contains("keys")) {
@@ -262,83 +225,75 @@ class WebGL implements Clerk {
         }
     }
 
-    public RaycastResult raycastBlock() {
-        double[] startPos = cameraPos.clone();
+    /**
+     * @param hitFace retun position of adjacent block instead
+     * @return Block position
+     */
+    public int[] raycastBlock(boolean hitFace) {
+        double[] ray = cameraPos.clone();
         double[] rayDir = frontVector.clone();
 
-        // Current position along the ray
-        double[] currentPos = startPos.clone();
+        // Length of ray from current position to next x, y, or z side
+        double[] deltaDist = new double[3];
+        deltaDist[0] = Math.abs(rayDir[0]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[0]);
+        deltaDist[1] = Math.abs(rayDir[1]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[1]);
+        deltaDist[2] = Math.abs(rayDir[2]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[2]);
 
-        // Previous position (to determine which face was hit)
-        double[] prevPos = startPos.clone();
+        // What direction to step in x,y,z (either +1 or -1)
+        int[] step = new int[3];
+        step[0] = rayDir[0] < 0 ? -1 : 1;
+        step[1] = rayDir[1] < 0 ? -1 : 1;
+        step[2] = rayDir[2] < 0 ? -1 : 1;
 
-        for (double distance = 0; distance <= MAX_REACH; distance += RAY_STEP) {
-            // Store previous position
-            System.arraycopy(currentPos, 0, prevPos, 0, 3);
+        // Current block position
+        int[] map = new int[3];
+        map[0] = (int) Math.floor(ray[0]);
+        map[1] = (int) Math.floor(ray[1]);
+        map[2] = (int) Math.floor(ray[2]);
 
-            // Move along ray
-            currentPos[0] = startPos[0] + rayDir[0] * distance;
-            currentPos[1] = startPos[1] + rayDir[1] * distance;
-            currentPos[2] = startPos[2] + rayDir[2] * distance;
+        // Length of ray from start to current x, y, or z-side
+        double[] sideDist = new double[3];
+        sideDist[0] = (step[0] < 0 ? ray[0] - map[0] : + 1.0 - ray[0]) * deltaDist[0];
+        sideDist[1] = (step[1] < 0 ? ray[1] - map[1] : + 1.0 - ray[1]) * deltaDist[1];
+        sideDist[2] = (step[2] < 0 ? ray[2] - map[2] : + 1.0 - ray[2]) * deltaDist[2];
 
-            // Convert to block coordinates
-            int blockX = (int) Math.floor(currentPos[0]);
-            int blockY = (int) Math.floor(currentPos[1]);
-            int blockZ = (int) Math.floor(currentPos[2]);
+        // Distance traveled along the ray
+        double totalDistance = 0.0;
 
-            // Check if we hit a non-air block
-            BlockType blockType = getBlock(blockX, blockY, blockZ);
-            if (blockType != BlockType.AIR) {
-                // Determine which face was hit by comparing previous position
-                Direction hitFace = determineHitFace(prevPos, currentPos, blockX, blockY, blockZ);
+        // Perform DDAe
+        while (totalDistance < MAX_REACH) {
+            // Jump to next map square in x, y, or z direction
+            if (sideDist[0] < sideDist[1] && sideDist[0] < sideDist[2]) {
+                sideDist[0] += deltaDist[0];
+                map[0] += step[0];
+                totalDistance = sideDist[0];
+            } else if (sideDist[1] < sideDist[2]) {
+                sideDist[1] += deltaDist[1];
+                map[1] += step[1];
+                totalDistance = sideDist[1];
+            } else {
+                sideDist[2] += deltaDist[2];
+                map[2] += step[2];
+                totalDistance = sideDist[2];
+            }
 
-                return new RaycastResult(blockX, blockY, blockZ, distance, hitFace, blockType);
+            // debug
+            System.out.println("--------------------------");
+            for (int i = 0; i <= 2; i++) {
+                System.out.println("ray" + ray[i]);
+                System.out.println("rayDir" + rayDir[i]);
+                System.out.println("step" + step[i]);
+                System.out.println("map" + map[i]);
+                System.out.println("sideDist" + sideDist[i]);
+            }
+            System.out.println("totalDistance" + totalDistance);
+
+            // check if non air block is hit
+            if (getBlock(map[0], map[1], map[2]) != BlockType.AIR) {
+                return map;
             }
         }
-
-        return null; // No block found within reach
+        // No block found within range
+        return null;
     }
-
-    private Direction determineHitFace(double[] prevPos, double[] currentPos, int blockX, int blockY, int blockZ) {
-        // Calculate the exact point where the ray entered the block
-        double dx = currentPos[0] - prevPos[0];
-        double dy = currentPos[1] - prevPos[1];
-        double dz = currentPos[2] - prevPos[2];
-
-        // Find which component changed the most
-        double absX = Math.abs(dx);
-        double absY = Math.abs(dy);
-        double absZ = Math.abs(dz);
-
-        // The face is determined by which axis had the largest change
-        // and whether we were approaching from the positive or negative direction
-        // NOTE: might need to reverse west and east etc
-        if (absX >= absY && absX >= absZ) {
-            return dx > 0 ? Direction.WEST : Direction.EAST;
-        } else if (absY >= absX && absY >= absZ) {
-            return dy > 0 ? Direction.DOWN : Direction.UP;
-        } else {
-            return dz > 0 ? Direction.NORTH : Direction.SOUTH;
-        }
-    }
-}
-
-public class RaycastResult { // NOTE: why plubic
-    public final int x, y, z; // Position of the block hit
-    public final double distance; // Distance to the block
-    public final Direction hitFace; // Which face was hit
-    public final BlockType blockType; // Type of block that was hit
-
-    public RaycastResult(int x, int y, int z, double distance, Direction hitFace, BlockType blockType) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.distance = distance;
-        this.hitFace = hitFace;
-        this.blockType = blockType;
-    }
-}
-
-public enum Direction {
-    NORTH, SOUTH, EAST, WEST, UP, DOWN;
 }
