@@ -170,18 +170,6 @@ class LiveView {
 
     void createResponseContext(String path, Consumer<String> delegate, String id) {
         server.createContext(path, exchange -> {
-            // Add CORS headers
-            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "http://localhost:50001/");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, OPTIONS");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Content-Length");
-
-            // Handle OPTIONS (preflight) requests
-            if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
-                exchange.sendResponseHeaders(200, -1);
-                exchange.close();
-                return;
-            }
-
             if (!exchange.getRequestMethod().equalsIgnoreCase("post")) {
                 exchange.sendResponseHeaders(405, -1); // Method Not Allowed
                 return;

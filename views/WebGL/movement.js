@@ -1,13 +1,10 @@
-// net::ERR_INVALID_CHUNKED_ENCODING 200 (OK) is the error from /events
-// net::ERR_INSUFFICIENT_RESOURCES is the error from /mouseevents
-const mnKEvent = {
-    // set of currently pressed keys
-    activeKeys: new Set(),
+// on mousclick send front vec
+// incrementaly send position updates
 
+const movement = {
     init: function() {
         // Add key listeners
         document.addEventListener('keydown', (event) => this.handleKeyDown(event));
-        document.addEventListener('keyup', (event) => this.handleKeyUp(event));
 
         // Add mouse listener
         document.addEventListener('mousedown', (event) => this.handleMouseDown(event));
@@ -34,17 +31,10 @@ const mnKEvent = {
             event.preventDefault();
         }
 
-        this.activeKeys.add(key);
 
         this.sendUpdateKey({
             keys: Array.from(this.activeKeys)
         });
-    },
-
-    handleKeyUp: function(event) {
-        const key = event.key.toUpperCase();
-
-        this.activeKeys.delete(key);
     },
 
     handleMouseDown: function(event) {
@@ -65,10 +55,10 @@ const mnKEvent = {
         }
     },
 
-    sendUpdateKey: async function(data) {
+    sendUpdatePos: async function(data) {
         console.log(data);
         try {
-            await fetch('http://localhost:' + window.location.port + '/keyevent', {
+            await fetch('http://localhost:' + window.location.port + '/position', {
                 method: 'POST',
                 body: JSON.stringify(data),
                 headers: {
@@ -78,13 +68,14 @@ const mnKEvent = {
                 keepalive: true
             });
         } catch (error) {
-            console.error('Failed to send key update:', error);
+            console.error('Failed to send position update:', error);
         }
     },
 
-    sendUpdateMouse: async function(data) {
+    sendUpdateFrontVec: async function(data) {
+        console.log(data);
         try {
-            await fetch('http://localhost:' + window.location.port + '/mouseevent', {
+            await fetch('http://localhost:' + window.location.port + '/frontvector', {
                 method: 'POST',
                 body: JSON.stringify(data),
                 headers: {
@@ -94,8 +85,8 @@ const mnKEvent = {
                 keepalive: true
             });
         } catch (error) {
-            console.error('Failed to send mouse update:', error);
+            console.error('Failed to send front facing vector update:', error);
         }
     }
 }
-mnKEvent.init();
+movement.init();

@@ -2,6 +2,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 class WebGL implements Clerk {
+    // enable movement calculation in js (this wont crash the lvp server sent event)
+    final static boolean enableJsMovement = true;
+
     // LiveView
     final String ID;
     LiveView view;
@@ -25,7 +28,11 @@ class WebGL implements Clerk {
         ID = Clerk.getHashID(this);
         this.chunks = new HashMap<>();
         initializeWebGL();
-        handleMnKEvent();
+
+        if (!enableJsMovement) {
+            handleMouseEvent();
+            handleKeyEvent();
+        }
     }
 
     public WebGL() {
@@ -33,7 +40,11 @@ class WebGL implements Clerk {
     }
 
     private void initializeWebGL() {
-        Clerk.load(view, "views/WebGL/handleMnKEvent.js");
+        if (!enableJsMovement) {
+            Clerk.load(view, "views/WebGL/handleMnKEvent.js");
+        } else {
+            Clerk.load(view, "views/WebGL/movement.js");
+        }
         Clerk.load(view, "views/WebGL/webGL.js");
         Clerk.write(view, "<canvas id='WebGLCanvas" + ID + "'></canvas>");
         Clerk.script(view, "const gl" + ID + " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
@@ -45,36 +56,9 @@ class WebGL implements Clerk {
         setBlock(-17, 1, 1, BlockType.STONE);
     }
 
-    // maybe to much data is sent to quick
-    public void handleMnKEvent() {
-        view.createResponseContext("/mnkevent", (data) -> {
-            if (data.contains("mouseMove")) {
-                // Parse the incoming JSON data
-                String[] parts = data.replaceAll("[^0-9.,-]", "").split(",");
-
-                double mouseX = Double.parseDouble(parts[0]);
-                double mouseY = Double.parseDouble(parts[1]);
-
-                // Update yaw and pitch
-                yaw -= mouseX * MOUSE_SENSITIVITY;
-                pitch -= mouseY * MOUSE_SENSITIVITY;
-
-                // Clamp pitch to prevent flipping
-                pitch = Math.max(-89, Math.min(89, pitch));
-
-                // Normalize yaw to 0-360 range
-                yaw = (yaw % 360 + 360) % 360;
-
-                // Calculate front Vector
-                double radYaw = Math.toRadians(yaw);
-                double radPitch = Math.toRadians(pitch);
-                frontVector[0] = Math.cos(radPitch) * Math.sin(radYaw);
-                frontVector[1] = Math.sin(radPitch);
-                frontVector[2] = Math.cos(radPitch) * Math.cos(radYaw);
-                frontVector = VectorUtils.normalize(frontVector);
-
-                updateCamera();
-            } else if (data.contains("mouseDown")) {
+    public void handleKeyEvent() {
+        view.createResponseContext("/keyevent", (data) -> {
+            if (data.contains("mouseDown")) {
                 int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
                 switch (button) {
                     case 0: // Left click - Break block
@@ -140,6 +124,36 @@ class WebGL implements Clerk {
                 }
                 updateCamera();
             }
+        });
+    }
+
+    public void handleMouseEvent() {
+        view.createResponseContext("/mouseevent", (data) -> {
+            // Parse the incoming JSON data
+            String[] parts = data.replaceAll("[^0-9.,-]", "").split(",");
+
+            double mouseX = Double.parseDouble(parts[0]);
+            double mouseY = Double.parseDouble(parts[1]);
+
+            // Update yaw and pitch
+            yaw -= mouseX * MOUSE_SENSITIVITY;
+            pitch -= mouseY * MOUSE_SENSITIVITY;
+
+            // Clamp pitch to prevent flipping
+            pitch = Math.max(-89, Math.min(89, pitch));
+
+            // Normalize yaw to 0-360 range
+            yaw = (yaw % 360 + 360) % 360;
+
+            // Calculate front Vector
+            double radYaw = Math.toRadians(yaw);
+            double radPitch = Math.toRadians(pitch);
+            frontVector[0] = Math.cos(radPitch) * Math.sin(radYaw);
+            frontVector[1] = Math.sin(radPitch);
+            frontVector[2] = Math.cos(radPitch) * Math.cos(radYaw);
+            frontVector = VectorUtils.normalize(frontVector);
+
+            updateCamera();
         });
     }
 
@@ -253,9 +267,9 @@ class WebGL implements Clerk {
 
         // Length of ray from start to current x, y, or z-side
         double[] sideDist = new double[3];
-        sideDist[0] = (step[0] < 0 ? ray[0] - map[0] : + 1.0 - ray[0]) * deltaDist[0];
-        sideDist[1] = (step[1] < 0 ? ray[1] - map[1] : + 1.0 - ray[1]) * deltaDist[1];
-        sideDist[2] = (step[2] < 0 ? ray[2] - map[2] : + 1.0 - ray[2]) * deltaDist[2];
+        sideDist[0] = (step[0] < 0 ? ray[0] - map[0] : +1.0 - ray[0]) * deltaDist[0];
+        sideDist[1] = (step[1] < 0 ? ray[1] - map[1] : +1.0 - ray[1]) * deltaDist[1];
+        sideDist[2] = (step[2] < 0 ? ray[2] - map[2] : +1.0 - ray[2]) * deltaDist[2];
 
         // Distance traveled along the ray
         double totalDistance = 0.0;
