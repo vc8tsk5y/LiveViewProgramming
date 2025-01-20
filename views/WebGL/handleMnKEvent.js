@@ -66,7 +66,6 @@ const mnKEvent = {
     },
 
     sendUpdateKey: async function(data) {
-        console.log(data);
         try {
             await fetch('http://localhost:' + window.location.port + '/keyevent', {
                 method: 'POST',

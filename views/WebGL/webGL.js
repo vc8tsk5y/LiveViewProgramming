@@ -34,29 +34,21 @@ class WebGL {
     }
 
     initializeBuffersAndProgram() {
-        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES); // NOTE: only cubes
+        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES);
         this.cubeIndices = createStaticIndexBuffer(this.gl, this.CUBE_INDICES);
         if (!this.cubeVertices || !this.cubeIndices) {
             throw new Error('Failed to create vertex or index buffers');
         }
-
-        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
-        if (!this.program) {
-            throw new Error('Failed to create WebGL program');
-        }
-        this.setupAttributesAndUniforms();
-        this.setupVAO();
 
         this.crosshairBuffer = createStaticVertexBuffer(this.gl, this.CROSSHAIR_VERTICES);
         if (!this.crosshairBuffer) {
             throw new Error('Failed to create crosshair buffer');
         }
 
-        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode); // NOTE: warum zwei mal
+        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
         if (!this.program) {
             throw new Error('Failed to create WebGL program');
         }
-
         this.setupAttributesAndUniforms();
         this.setupVAO();
     }
@@ -81,7 +73,7 @@ class WebGL {
     setupVAO() {
         const gl = this.gl;
         const stride = 6 * Float32Array.BYTES_PER_ELEMENT;
-        this.cubeVao = createInterleavedVao(gl, this.cubeVertices, this.cubeIndices, [ // NOTE: maybe should not use cube stuff?
+        this.cubeVao = createInterleavedVao(gl, this.cubeVertices, this.cubeIndices, [
             { location: this.attributes.position, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 0 },
             { location: this.attributes.color, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 3 * Float32Array.BYTES_PER_ELEMENT },
         ]);
@@ -256,8 +248,8 @@ class WebGL {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.enable(gl.DEPTH_TEST);
         gl.enable(gl.CULL_FACE);
-        gl.cullFace(gl.BACK); // NOTE: do i need this
-        gl.frontFace(gl.CCW); // NOTE: do i need this
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         gl.useProgram(this.program);

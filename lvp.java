@@ -186,7 +186,9 @@ class LiveView {
                 byte[] data = new byte[length];
                 exchange.getRequestBody().read(data);
                 delegate.accept(new String(data));
-                sendServerEvent(SSEType.RELEASE, id);
+                // NOTE: this line crashed the sse connection it sent confirmation on every
+                // fetch recieved
+                // sendServerEvent(SSEType.RELEASE, id);
             } catch (NumberFormatException e) {
                 exchange.sendResponseHeaders(400, -1);
                 return;

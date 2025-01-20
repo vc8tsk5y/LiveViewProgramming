@@ -2,9 +2,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 class WebGL implements Clerk {
-    // enable movement calculation in js (this wont crash the lvp server sent event)
-    final static boolean enableJsMovement = true;
-
     // LiveView
     final String ID;
     LiveView view;
@@ -14,9 +11,11 @@ class WebGL implements Clerk {
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
-    private static final double MOUSE_SENSITIVITY = 0.2;
+    private static final double MOUSE_SENSITIVITY = 0.4;
     private static final double MOVEMENT_SPEED = 0.5;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
+    private static final long UPDATE_INTERVAL_MS = 16; // Limit updates to ~60fps (16ms interval)
+    private long lastUpdateTimestamp = 0;
 
     // World
     private static final int CHUNK_SIZE = 16;
@@ -26,13 +25,18 @@ class WebGL implements Clerk {
     public WebGL(LiveView view) {
         this.view = view;
         ID = Clerk.getHashID(this);
-        this.chunks = new HashMap<>();
         initializeWebGL();
+        handleMouseEvent();
+        handleKeyEvent();
+        this.chunks = new HashMap<>();
 
-        if (!enableJsMovement) {
-            handleMouseEvent();
-            handleKeyEvent();
-        }
+        setBlock(0, 1, 0, BlockType.GRASS);
+        setBlock(15, 1, 0, BlockType.STONE);
+        setBlock(0, 1, 16, BlockType.STONE);
+        setBlock(0, 2, 16, BlockType.STONE);
+        setBlock(-17, 1, 0, BlockType.STONE);
+        setBlock(-17, 1, 1, BlockType.STONE);
+        setBlock(0, 127, 0, BlockType.STONE);
     }
 
     public WebGL() {
@@ -40,20 +44,10 @@ class WebGL implements Clerk {
     }
 
     private void initializeWebGL() {
-        if (!enableJsMovement) {
-            Clerk.load(view, "views/WebGL/handleMnKEvent.js");
-        } else {
-            Clerk.load(view, "views/WebGL/movement.js");
-        }
+        Clerk.load(view, "views/WebGL/handleMnKEvent.js");
         Clerk.load(view, "views/WebGL/webGL.js");
         Clerk.write(view, "<canvas id='WebGLCanvas" + ID + "'></canvas>");
         Clerk.script(view, "const gl" + ID + " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
-        setBlock(0, 1, 0, BlockType.GRASS);
-        setBlock(15, 1, 0, BlockType.STONE);
-        setBlock(0, 1, 16, BlockType.STONE);
-        setBlock(0, 2, 16, BlockType.STONE);
-        setBlock(-17, 1, 0, BlockType.STONE);
-        setBlock(-17, 1, 1, BlockType.STONE);
     }
 
     public void handleKeyEvent() {
@@ -62,12 +56,18 @@ class WebGL implements Clerk {
                 int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
                 switch (button) {
                     case 0: // Left click - Break block
-                        int[] destroy = raycastBlock(false);
-                        setBlock(destroy[0], destroy[1], destroy[2], BlockType.AIR);
+                        int[] targetBlock = raycastBlock(false);
+                        if (targetBlock == null)
+                            break;
+
+                        setBlock(targetBlock[0], targetBlock[1], targetBlock[2], BlockType.AIR);
                         break;
                     case 2: // Right click - Place block
+                        int[] adjacentBlock = raycastBlock(true);
+                        if (adjacentBlock == null || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
+                            break;
 
-                        // Check if the new position is empty and within bounds
+                        setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE); // TODO: place current selected block
                         break;
                 }
             } else if (data.contains("keys")) {
@@ -158,10 +158,19 @@ class WebGL implements Clerk {
     }
 
     public void updateCamera() {
+        // rate limiter
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastUpdateTimestamp < UPDATE_INTERVAL_MS) {
+            return; // Skip this update as it's too soon
+        }
+        lastUpdateTimestamp = currentTime;
+
+        // updateCamera
         Clerk.call(view, String.format("gl%s.updateCamera(%f, %f, %f, %f, %f);",
                 ID, cameraPos[0], cameraPos[1], cameraPos[2], yaw, pitch));
     }
 
+    // TODO: what if max height
     public void setBlock(int x, int y, int z, BlockType blockType) {
         Chunk chunk;
         // set block in java script(webGL)
@@ -213,8 +222,7 @@ class WebGL implements Clerk {
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
                     for (int k = 0; k < CHUNK_SIZE; k++) {
-                        // NOTE: chunk blocks are not updated in js
-                        blocks[i][j][k] = (j == 0) ? BlockType.STONE : BlockType.AIR;
+                        blocks[i][j][k] = BlockType.AIR;
                     }
                 }
             }
@@ -239,75 +247,73 @@ class WebGL implements Clerk {
         }
     }
 
-    /**
-     * @param hitFace retun position of adjacent block instead
-     * @return Block position
-     */
-    public int[] raycastBlock(boolean hitFace) {
+    public int[] raycastBlock(boolean returnAdjacent) {
+        // Starting position and direction
         double[] ray = cameraPos.clone();
         double[] rayDir = frontVector.clone();
 
+        // Current block position
+        int[] map = new int[3];
+        for (int i = 0; i < 3; i++) {
+            map[i] = (int) Math.floor(ray[i]);
+        }
+
+        // Store the previous block position
+        int[] prevMap = map.clone();
+
         // Length of ray from current position to next x, y, or z side
         double[] deltaDist = new double[3];
-        deltaDist[0] = Math.abs(rayDir[0]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[0]);
-        deltaDist[1] = Math.abs(rayDir[1]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[1]);
-        deltaDist[2] = Math.abs(rayDir[2]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[2]);
+        for (int i = 0; i < 3; i++) {
+            deltaDist[i] = Math.abs(rayDir[i]) < 0.0001 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayDir[i]);
+        }
 
         // What direction to step in x,y,z (either +1 or -1)
         int[] step = new int[3];
-        step[0] = rayDir[0] < 0 ? -1 : 1;
-        step[1] = rayDir[1] < 0 ? -1 : 1;
-        step[2] = rayDir[2] < 0 ? -1 : 1;
-
-        // Current block position
-        int[] map = new int[3];
-        map[0] = (int) Math.floor(ray[0]);
-        map[1] = (int) Math.floor(ray[1]);
-        map[2] = (int) Math.floor(ray[2]);
-
         // Length of ray from start to current x, y, or z-side
         double[] sideDist = new double[3];
-        sideDist[0] = (step[0] < 0 ? ray[0] - map[0] : +1.0 - ray[0]) * deltaDist[0];
-        sideDist[1] = (step[1] < 0 ? ray[1] - map[1] : +1.0 - ray[1]) * deltaDist[1];
-        sideDist[2] = (step[2] < 0 ? ray[2] - map[2] : +1.0 - ray[2]) * deltaDist[2];
+        for (int i = 0; i < 3; i++) {
+            if (rayDir[i] < 0) {
+                step[i] = -1;
+                sideDist[i] = (ray[i] - map[i]) * deltaDist[i];
+            } else {
+                step[i] = 1;
+                sideDist[i] = (map[i] + 1.0 - ray[i]) * deltaDist[i];
+            }
+        }
 
         // Distance traveled along the ray
         double totalDistance = 0.0;
 
-        // Perform DDAe
+        // Perform DDA
         while (totalDistance < MAX_REACH) {
-            // Jump to next map square in x, y, or z direction
-            if (sideDist[0] < sideDist[1] && sideDist[0] < sideDist[2]) {
-                sideDist[0] += deltaDist[0];
-                map[0] += step[0];
-                totalDistance = sideDist[0];
-            } else if (sideDist[1] < sideDist[2]) {
-                sideDist[1] += deltaDist[1];
-                map[1] += step[1];
-                totalDistance = sideDist[1];
-            } else {
-                sideDist[2] += deltaDist[2];
-                map[2] += step[2];
-                totalDistance = sideDist[2];
-            }
+            // Find axis with minimum side distance
+            int axis = 0;
+            if (sideDist[1] < sideDist[0])
+                axis = 1;
+            if (sideDist[2] < sideDist[axis])
+                axis = 2;
 
-            // debug
-            System.out.println("--------------------------");
-            for (int i = 0; i <= 2; i++) {
-                System.out.println("ray" + ray[i]);
-                System.out.println("rayDir" + rayDir[i]);
-                System.out.println("step" + step[i]);
-                System.out.println("map" + map[i]);
-                System.out.println("sideDist" + sideDist[i]);
-            }
-            System.out.println("totalDistance" + totalDistance);
+            // update total distance traveled
+            totalDistance = sideDist[axis];
+
+            // save previous map
+            // if (returnAdjacent) {
+            prevMap = map.clone();
+            // }
+
+            // Move to the next block in the shortest axis
+            map[axis] += step[axis];
+
+            // Update the sideDist for the axis we moved in
+            sideDist[axis] += deltaDist[axis];
 
             // check if non air block is hit
             if (getBlock(map[0], map[1], map[2]) != BlockType.AIR) {
-                return map;
+                return returnAdjacent ? prevMap : map;
             }
         }
         // No block found within range
+        System.out.println("no block in range");
         return null;
     }
 }
