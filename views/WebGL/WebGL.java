@@ -28,15 +28,8 @@ class WebGL implements Clerk {
         initializeWebGL();
         handleMouseEvent();
         handleKeyEvent();
+        handleTexturesLoad();
         this.chunks = new HashMap<>();
-
-        setBlock(0, 1, 0, BlockType.GRASS);
-        setBlock(15, 1, 0, BlockType.STONE);
-        setBlock(0, 1, 16, BlockType.STONE);
-        setBlock(0, 2, 16, BlockType.STONE);
-        setBlock(-17, 1, 0, BlockType.STONE);
-        setBlock(-17, 1, 1, BlockType.STONE);
-        setBlock(0, 127, 0, BlockType.STONE);
     }
 
     public WebGL() {
@@ -48,6 +41,20 @@ class WebGL implements Clerk {
         Clerk.load(view, "views/WebGL/webGL.js");
         Clerk.write(view, "<canvas id='WebGLCanvas" + ID + "'></canvas>");
         Clerk.script(view, "const gl" + ID + " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
+    }
+
+    public void handleTexturesLoad() {
+        view.createResponseContext("/texturesload", (data) -> {
+            setBlock(0, 1, 0, BlockType.GRASS);
+            setBlock(0, 2, 0, BlockType.DIRT);
+            setBlock(0, 3, 0, BlockType.STONE);
+            setBlock(15, 1, 0, BlockType.STONE);
+            setBlock(0, 1, 16, BlockType.STONE);
+            setBlock(0, 2, 16, BlockType.STONE);
+            setBlock(-17, 1, 0, BlockType.STONE);
+            setBlock(-17, 1, 1, BlockType.STONE);
+            setBlock(0, 127, 0, BlockType.STONE);
+        });
     }
 
     public void handleKeyEvent() {
@@ -64,10 +71,14 @@ class WebGL implements Clerk {
                         break;
                     case 2: // Right click - Place block
                         int[] adjacentBlock = raycastBlock(true);
-                        if (adjacentBlock == null || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
+                        if (adjacentBlock == null
+                                || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
                             break;
 
-                        setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE); // TODO: place current selected block
+                        setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE); // TODO: place
+                                                                                                         // current
+                                                                                                         // selected
+                                                                                                         // block
                         break;
                 }
             } else if (data.contains("keys")) {
@@ -166,8 +177,7 @@ class WebGL implements Clerk {
         lastUpdateTimestamp = currentTime;
 
         // updateCamera
-        Clerk.call(view, String.format("gl%s.updateCamera(%f, %f, %f, %f, %f);",
-                ID, cameraPos[0], cameraPos[1], cameraPos[2], yaw, pitch));
+        Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + "," + yaw + "," + pitch + ");");
     }
 
     // TODO: what if max height

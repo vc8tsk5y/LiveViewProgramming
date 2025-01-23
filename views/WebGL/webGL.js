@@ -12,16 +12,18 @@ class WebGL {
 
         this.camera = {
             position: [0, 0, 0],
-            front: [0, 0, 1],   // Looking direction
+            front: [0, 0, 1],
             up: [0, 1, 0],
             right: [-1, 0, 0]
         };
         this.shapes = [];
+        this.textures = new Map(); // store the textures here
         this.setupShaders();
         this.setupGeometry();
         this.initializeBuffersAndProgram();
         this.UP_VEC = [0, 1, 0];
         this.initializeMatrices();
+        this.initializeTextures();
 
         this.resize();
         window.addEventListener('resize', this.resize.bind(this));
@@ -30,6 +32,7 @@ class WebGL {
             this.render();
             requestAnimationFrame(this.frame);
         }
+        // start the render loop
         requestAnimationFrame(this.frame);
     }
 
@@ -58,28 +61,88 @@ class WebGL {
         this.attributes = {
             position: gl.getAttribLocation(this.program, 'vertexPosition'),
             color: gl.getAttribLocation(this.program, 'vertexColor'),
+            texCoord: gl.getAttribLocation(this.program, 'texCoord'),
         };
 
         this.uniforms = {
             matWorld: gl.getUniformLocation(this.program, 'matWorld'),
             matViewProj: gl.getUniformLocation(this.program, 'matViewProj'),
+            textureSampler: gl.getUniformLocation(this.program, 'textureSampler'),
+            useTexture: gl.getUniformLocation(this.program, 'useTexture'),
         };
-
-        if (this.attributes.position === -1 || this.attributes.color === -1 || !this.uniforms.matWorld || !this.uniforms.matViewProj) {
-            throw new Error('Failed to retrieve shader attributes or uniforms');
-        }
     }
 
     setupVAO() {
         const gl = this.gl;
-        const stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+        const stride = 8 * Float32Array.BYTES_PER_ELEMENT; // 3 pos + 3 color + 2 texture
         this.cubeVao = createInterleavedVao(gl, this.cubeVertices, this.cubeIndices, [
             { location: this.attributes.position, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 0 },
             { location: this.attributes.color, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 3 * Float32Array.BYTES_PER_ELEMENT },
+            { location: this.attributes.texCoord, size: 2, type: gl.FLOAT, normalized: false, stride, offset: 6 * Float32Array.BYTES_PER_ELEMENT },
         ]);
 
         if (!this.cubeVao) {
             throw new Error('Failed to create VAO');
+        }
+    }
+
+    async loadTexture(name, imageUrl) {
+        const gl = this.gl;
+
+        // Create and bind texture
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        // Load temporary single pixel while image loads
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+            new Uint8Array([255, 255, 255, 255]));
+
+        // Load the image
+        const image = new Image();
+        image.src = imageUrl;
+
+        return new Promise((resolve, reject) => {
+            image.onload = () => {
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+
+                if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
+                    // For power of 2 textures
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                } else {
+                    // For non-power of 2 textures
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                }
+
+                this.textures.set(name, texture);
+                resolve(texture);
+            };
+            image.onerror = reject;
+        });
+    }
+
+    async initializeTextures() {
+        try {
+            await Promise.all([
+                this.loadTexture(1, '../textures/stone.png'),
+                this.loadTexture(2, '../textures/grass.png'),
+                this.loadTexture(3, '../textures/dirt.png'),
+            ]);
+
+
+            fetch('http://localhost:' + window.location.port + '/texturesload', {
+                method: 'POST',
+                body: JSON.stringify("Loaded textures"),
+            })
+
+            return true;
+        } catch (error) {
+            console.error('Failed to load textures:', error);
+            return false;
         }
     }
 
@@ -95,14 +158,17 @@ class WebGL {
 
         in vec3 vertexPosition;
         in vec3 vertexColor;
+        in vec2 texCoord;
 
         out vec3 fragmentColor;
+        out vec2 fragmentTexCoord;
 
         uniform mat4 matWorld;
         uniform mat4 matViewProj;
 
         void main() {
             fragmentColor = vertexColor;
+            fragmentTexCoord = texCoord;
 
             gl_Position = matViewProj * matWorld * vec4(vertexPosition, 1.0);
         }`;
@@ -111,51 +177,60 @@ class WebGL {
         precision mediump float;
 
         in vec3 fragmentColor;
+        in vec2 fragmentTexCoord;
+
+        uniform sampler2D textureSampler;
+        uniform bool useTexture;
+
         out vec4 outputColor;
 
         void main() {
-            outputColor = vec4(fragmentColor, 1.0);
+            if (useTexture) {
+                outputColor = texture(textureSampler, fragmentTexCoord) * vec4(fragmentColor, 1.0);
+            } else {
+                outputColor = vec4(fragmentColor, 1.0);
+            }
         }`;
     }
 
     setupGeometry() {
         this.CUBE_VERTICES = new Float32Array([
-            // Cube vertices with colors (position.x, position.y, position.z, color.r, color.g, color.b)
+            // Format: x, y, z, r, g, b, u, v
             // Front face
-            0.0, 0.0, 1.0, 1, 0, 0,
-            1.0, 0.0, 1.0, 1, 0, 0,
-            1.0, 1.0, 1.0, 1, 0, 0,
-            0.0, 1.0, 1.0, 1, 0, 0,
+            0.0, 0.0, 1.0, 1, 1, 1, 0.0, 1.0,
+            1.0, 0.0, 1.0, 1, 1, 1, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1, 1, 1, 1.0, 0.0,
+            0.0, 1.0, 1.0, 1, 1, 1, 0.0, 0.0,
 
             // Back face
-            0.0, 0.0, 0.0, 1, 0, 0,
-            0.0, 1.0, 0.0, 1, 0, 0,
-            1.0, 1.0, 0.0, 1, 0, 0,
-            1.0, 0.0, 0.0, 1, 0, 0,
+            0.0, 0.0, 0.0, 1, 1, 1, 1.0, 1.0,
+            0.0, 1.0, 0.0, 1, 1, 1, 1.0, 0.0,
+            1.0, 1.0, 0.0, 1, 1, 1, 0.0, 0.0,
+            1.0, 0.0, 0.0, 1, 1, 1, 0.0, 1.0,
 
             // Top face
-            0.0, 1.0, 0.0, 0, 1, 0,
-            0.0, 1.0, 1.0, 0, 1, 0,
-            1.0, 1.0, 1.0, 0, 1, 0,
-            1.0, 1.0, 0.0, 0, 1, 0,
+            0.0, 1.0, 0.0, 1, 1, 1, 0.0, 1.0,
+            0.0, 1.0, 1.0, 1, 1, 1, 0.0, 0.0,
+            1.0, 1.0, 1.0, 1, 1, 1, 1.0, 0.0,
+            1.0, 1.0, 0.0, 1, 1, 1, 1.0, 1.0,
 
             // Bottom face
-            0.0, 0.0, 0.0, 0, 1, 0,
-            1.0, 0.0, 0.0, 0, 1, 0,
-            1.0, 0.0, 1.0, 0, 1, 0,
-            0.0, 0.0, 1.0, 0, 1, 0,
+            0.0, 0.0, 0.0, 1, 1, 1, 0.0, 0.0,
+            1.0, 0.0, 0.0, 1, 1, 1, 1.0, 0.0,
+            1.0, 0.0, 1.0, 1, 1, 1, 1.0, 1.0,
+            0.0, 0.0, 1.0, 1, 1, 1, 0.0, 1.0,
 
             // Right face
-            1.0, 0.0, 0.0, 0, 0, 1,
-            1.0, 1.0, 0.0, 0, 0, 1,
-            1.0, 1.0, 1.0, 0, 0, 1,
-            1.0, 0.0, 1.0, 0, 0, 1,
+            1.0, 0.0, 0.0, 1, 1, 1, 0.0, 1.0,
+            1.0, 1.0, 0.0, 1, 1, 1, 0.0, 0.0,
+            1.0, 1.0, 1.0, 1, 1, 1, 1.0, 0.0,
+            1.0, 0.0, 1.0, 1, 1, 1, 1.0, 1.0,
 
             // Left face
-            0.0, 0.0, 0.0, 0, 0, 1,
-            0.0, 0.0, 1.0, 0, 0, 1,
-            0.0, 1.0, 1.0, 0, 0, 1,
-            0.0, 1.0, 0.0, 0, 0, 1,
+            0.0, 0.0, 0.0, 1, 1, 1, 1.0, 1.0,
+            0.0, 0.0, 1.0, 1, 1, 1, 0.0, 1.0,
+            0.0, 1.0, 1.0, 1, 1, 1, 0.0, 0.0,
+            0.0, 1.0, 0.0, 1, 1, 1, 1.0, 0.0,
         ]);
         this.CUBE_INDICES = new Uint16Array([
             0, 1, 2,
@@ -256,7 +331,7 @@ class WebGL {
 
         gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
 
-        this.shapes.forEach(shape => shape.draw(gl, this.uniforms.matWorld));
+        this.shapes.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
 
         // Draw the crosshair (after other objects)
         this.drawCrosshair();
@@ -288,12 +363,14 @@ class WebGL {
 
     addBlock(x, y, z, blockType) {
         this.shapes.push(new Shape(
-            [x, y, z],                  // position
-            1.0,                        // scale
-            this.UP_VEC,                // rotation axis
-            0,                          // rotation angle
-            this.cubeVao,               // vertex array object
-            this.CUBE_INDICES.length    //number of indices
+            this.gl,                        // Added gl parameter
+            [x, y, z],                      // position
+            1.0,                            // scale
+            this.UP_VEC,                    // rotation axis
+            0,                              // rotation angle
+            this.cubeVao,                   // vertex array object
+            this.CUBE_INDICES.length,       //number of indices
+            this.textures.get(blockType)    // texture
         ));
     }
 
@@ -307,7 +384,8 @@ class WebGL {
 }
 
 class Shape {
-    constructor(pos, scale, rotationAxis, rotationAngle, vao, numIndices) {
+    constructor(gl, pos, scale, rotationAxis, rotationAngle, vao, numIndices, texture) {
+        this.gl = gl;
         this.matWorld = mat4.create();
         this.scaleVec = vec3.create();
         this.rotation = quat.create();
@@ -317,20 +395,31 @@ class Shape {
         this.rotationAngle = rotationAngle;
         this.vao = vao;
         this.numIndices = numIndices;
+        this.texture = texture;
     }
 
-    draw(gl, matWorldUniform) {
+    draw(gl, matWorldUniform, uniforms) {
         quat.setAxisAngle(this.rotation, this.rotationAxis, this.rotationAngle);
         vec3.set(this.scaleVec, this.scale, this.scale, this.scale);
 
         mat4.fromRotationTranslationScale(
             this.matWorld,
-            /* rotation= */ this.rotation,
-            /* position= */ this.pos,
-            /* scale= */ this.scaleVec
+            this.rotation,
+            this.pos,
+            this.scaleVec
         );
 
         gl.uniformMatrix4fv(matWorldUniform, false, this.matWorld);
+
+        if (this.texture) {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.texture);
+            gl.uniform1i(uniforms.textureSampler, 0);
+            gl.uniform1i(uniforms.useTexture, 1);
+        } else {
+            gl.uniform1i(uniforms.useTexture, 0);
+        }
+
         gl.bindVertexArray(this.vao);
         gl.drawElements(gl.TRIANGLES, this.numIndices, gl.UNSIGNED_SHORT, 0);
         gl.bindVertexArray(null);
@@ -421,4 +510,8 @@ function createInterleavedVao(gl, vertexBuffer, indexBuffer, attributes) {
     gl.bindVertexArray(null);
 
     return vao;
+}
+
+function isPowerOf2(value) {
+    return (value & (value - 1)) === 0;
 }
