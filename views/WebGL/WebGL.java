@@ -1,5 +1,8 @@
-import java.util.HashMap;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 
 class WebGL implements Clerk {
     // LiveView
@@ -20,8 +23,9 @@ class WebGL implements Clerk {
     // World
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 256;
+    private static final int RENDER_DISTANCE = 4; // Number of chunks to render in each direction
     public Map<Long, Chunk> chunks; // private
-    private long currentChunk;
+    private long currentChunkHash;
 
     public WebGL(LiveView view) {
         this.view = view;
@@ -30,8 +34,7 @@ class WebGL implements Clerk {
         handleMouseMove();
         handleClickEvent();
         handleTexturesLoad();
-        chunks = new HashMap<>();
-        currentChunk = playerChunk();
+        chunks = new ConcurrentHashMap<>();
     }
 
     public WebGL() {
@@ -47,7 +50,9 @@ class WebGL implements Clerk {
 
     public void handleTexturesLoad() {
         view.createResponseContext("/texturesload", (data) -> {
-            chunks.get(playerChunk()).renderBlocks();
+            handleChunkRendering();
+            setBlock(0, 1, 0, BlockType.DIRT);
+            setBlock(0, 2, 0, BlockType.STONE);
         });
     }
 
@@ -164,13 +169,8 @@ class WebGL implements Clerk {
             }
         }
         updateCamera();
-        // might want to handle this in new method
-        // TODO: set of chunks to render update set when changing chunks
-        // only rerender chunks that are new in set
-        if (currentChunk != playerChunk()) {
-            currentChunk = playerChunk();
-            chunks.computeIfAbsent(currentChunk, k -> new Chunk(currentChunk));
-            chunks.get(currentChunk).renderBlocks();
+        if (currentChunkHash != playerChunk()) {
+            handleChunkRendering();
         }
     }
 
@@ -185,6 +185,37 @@ class WebGL implements Clerk {
         // updateCamera
         Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + ","
                 + yaw + "," + pitch + ");");
+    }
+
+    private void handleChunkRendering() {
+        // Update current chunk based on new camera position
+        currentChunkHash = playerChunk();
+
+        // Load/unload chunks around player
+        int[] currentChunkCoords = hashToChunkCoord(currentChunkHash);
+
+        Set<Long> requiredChunks = new HashSet<>();
+
+        // Generate all chunk hashes within render distance
+        for (int x = currentChunkCoords[0] - RENDER_DISTANCE; x <= currentChunkCoords[0] + RENDER_DISTANCE; x++) {
+            for (int z = currentChunkCoords[1] - RENDER_DISTANCE; z <= currentChunkCoords[1] + RENDER_DISTANCE; z++) {
+                requiredChunks.add(getChunkHash(x * CHUNK_SIZE, z * CHUNK_SIZE));
+            }
+        }
+
+        // Load required chunks
+        for (Long hash : requiredChunks) {
+            chunks.computeIfAbsent(hash, k -> new Chunk(k));
+            chunks.get(hash).load();
+        }
+
+        // Unload chunks outside render distance
+        Set<Long> chunksToUnload = new HashSet<>(chunks.keySet());
+        chunksToUnload.removeAll(requiredChunks);
+
+        for (Long hash : chunksToUnload) {
+            chunks.get(hash).unload();
+        }
     }
 
     public void setBlock(int x, int y, int z, BlockType blockType) {
@@ -294,7 +325,7 @@ class WebGL implements Clerk {
         return null;
     }
 
-    public int[] raycastBlockDDA(boolean returnAdjacent) {
+    public int[] DDAraycastBlock(boolean returnAdjacent) {
         // Starting position and direction
         double[] ray = cameraPos.clone();
         double[] rayDir = frontVector.clone();
@@ -423,16 +454,31 @@ class WebGL implements Clerk {
             }
         }
 
-        public void renderBlocks() {
+        public void load() {
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
                     for (int k = 0; k < CHUNK_SIZE; k++) {
                         if (blocks[i][j][k] != BlockType.AIR) {
                             int[] chunkCoords = WebGL.hashToChunkCoord(hash);
-                            chunkCoords[0] = chunkCoords[0] * CHUNK_SIZE + i;
-                            chunkCoords[1] = chunkCoords[1] * CHUNK_SIZE + k;
-                            Clerk.call(view, "gl" + ID + ".addBlock(" + chunkCoords[0] + "," + j + "," + chunkCoords[1]
-                                    + "," + blocks[i][j][k].getId() + ");");
+                            int x = chunkCoords[0] * CHUNK_SIZE + i;
+                            int z = chunkCoords[1] * CHUNK_SIZE + k;
+                            Clerk.call(view, "gl" + ID + ".addBlock(" + x + "," + j + "," + z + ","
+                                    + blocks[i][j][k].getId() + ");");
+                        }
+                    }
+                }
+            }
+        }
+
+        public void unload() {
+            for (int i = 0; i < CHUNK_SIZE; i++) {
+                for (int j = 0; j < MAX_HEIGHT; j++) {
+                    for (int k = 0; k < CHUNK_SIZE; k++) {
+                        if (blocks[i][j][k] != BlockType.AIR) {
+                            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
+                            int x = chunkCoords[0] * CHUNK_SIZE + i;
+                            int z = chunkCoords[1] * CHUNK_SIZE + k;
+                            Clerk.call(view, "gl" + ID + ".removeBlock(" + x + "," + j + "," + z + ");");
                         }
                     }
                 }
