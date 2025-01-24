@@ -19,17 +19,19 @@ class WebGL implements Clerk {
 
     // World
     private static final int CHUNK_SIZE = 16;
-    private static final int MAX_HEIGHT = 128;
-    private Map<Long, Chunk> chunks;
+    private static final int MAX_HEIGHT = 256;
+    public Map<Long, Chunk> chunks; // private
+    private long currentChunk;
 
     public WebGL(LiveView view) {
         this.view = view;
         ID = Clerk.getHashID(this);
         initializeWebGL();
-        handleMouseEvent();
-        handleKeyEvent();
+        handleMouseMove();
+        handleClickEvent();
         handleTexturesLoad();
-        this.chunks = new HashMap<>();
+        chunks = new HashMap<>();
+        currentChunk = playerChunk();
     }
 
     public WebGL() {
@@ -45,100 +47,11 @@ class WebGL implements Clerk {
 
     public void handleTexturesLoad() {
         view.createResponseContext("/texturesload", (data) -> {
-            setBlock(0, 1, 0, BlockType.GRASS);
-            setBlock(0, 2, 0, BlockType.DIRT);
-            setBlock(0, 3, 0, BlockType.STONE);
-            setBlock(15, 1, 0, BlockType.STONE);
-            setBlock(0, 1, 16, BlockType.STONE);
-            setBlock(0, 2, 16, BlockType.STONE);
-            setBlock(-17, 1, 0, BlockType.STONE);
-            setBlock(-17, 1, 1, BlockType.STONE);
-            setBlock(0, 127, 0, BlockType.STONE);
+            chunks.get(playerChunk()).renderBlocks();
         });
     }
 
-    public void handleKeyEvent() {
-        view.createResponseContext("/keyevent", (data) -> {
-            if (data.contains("mouseDown")) {
-                int button = Integer.parseInt(data.replaceAll("[^0-9]", ""));
-                switch (button) {
-                    case 0: // Left click - Break block
-                        int[] targetBlock = raycastBlock(false);
-                        if (targetBlock == null)
-                            break;
-
-                        setBlock(targetBlock[0], targetBlock[1], targetBlock[2], BlockType.AIR);
-                        break;
-                    case 2: // Right click - Place block
-                        int[] adjacentBlock = raycastBlock(true);
-                        if (adjacentBlock == null
-                                || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
-                            break;
-
-                        setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE); // TODO: place
-                                                                                                         // current
-                                                                                                         // selected
-                                                                                                         // block
-                        break;
-                }
-            } else if (data.contains("keys")) {
-                // Parse the incoming JSON data
-                // Extract the part between the square brackets
-                String parts = data.substring(data.indexOf("[") + 1, data.indexOf("]"));
-
-                // Split the string by commas, removing the quotes
-                String[] keys = parts.replace("\"", "").split(",");
-
-                // Calculate right vector
-                double[] worldUp = { 0, 1, 0 };
-                double[] rightVector = VectorUtils.crossProduct(frontVector, worldUp);
-
-                // Handle movement
-                for (String key : keys) {
-                    double[] movementVec = new double[3];
-                    switch (key.toLowerCase()) {
-                        case "w": // Forward
-                            movementVec[0] += frontVector[0] * MOVEMENT_SPEED;
-                            movementVec[2] += frontVector[2] * MOVEMENT_SPEED;
-                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                                    MOVEMENT_SPEED);
-                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
-                            break;
-                        case "r": // Backward
-                            movementVec[0] -= frontVector[0] * MOVEMENT_SPEED;
-                            movementVec[2] -= frontVector[2] * MOVEMENT_SPEED;
-                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                                    MOVEMENT_SPEED);
-                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
-                            break;
-                        case "a": // Strafe left
-                            movementVec[0] -= rightVector[0] * MOVEMENT_SPEED;
-                            movementVec[2] -= rightVector[2] * MOVEMENT_SPEED;
-                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                                    MOVEMENT_SPEED);
-                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
-                            break;
-                        case "s": // Strafe right
-                            movementVec[0] += rightVector[0] * MOVEMENT_SPEED;
-                            movementVec[2] += rightVector[2] * MOVEMENT_SPEED;
-                            movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                                    MOVEMENT_SPEED);
-                            cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
-                            break;
-                        case " ": // Space bar
-                            cameraPos[1] += MOVEMENT_SPEED;
-                            break;
-                        case "c":
-                            cameraPos[1] -= MOVEMENT_SPEED;
-                            break;
-                    }
-                }
-                updateCamera();
-            }
-        });
-    }
-
-    public void handleMouseEvent() {
+    public void handleMouseMove() {
         view.createResponseContext("/mouseevent", (data) -> {
             // Parse the incoming JSON data
             String[] parts = data.replaceAll("[^0-9.,-]", "").split(",");
@@ -168,6 +81,99 @@ class WebGL implements Clerk {
         });
     }
 
+    public void handleClickEvent() {
+        view.createResponseContext("/keyevent", (data) -> {
+            if (data.contains("mouseDown")) {
+                // Parse the incoming JSON data
+                // remove all non-numeric characters
+                handleMouseClick(Integer.parseInt(data.replaceAll("[^0-9]", "")));
+            } else if (data.contains("keys")) {
+                // Parse the incoming JSON data
+                // Extract the part between the square brackets
+                String parts = data.substring(data.indexOf("[") + 1, data.indexOf("]"));
+
+                // Split the string by commas, removing the quotes
+                handleKeyBoard(parts.replace("\"", "").split(","));
+            }
+        });
+    }
+
+    private void handleMouseClick(int button) {
+        switch (button) {
+            case 0: // Left click - Break block
+                int[] targetBlock = raycastBlock(false);
+                if (targetBlock == null)
+                    break;
+
+                setBlock(targetBlock[0], targetBlock[1], targetBlock[2], BlockType.AIR);
+                break;
+            case 2: // Right click - Place block
+                int[] adjacentBlock = raycastBlock(true);
+                if (adjacentBlock == null
+                        || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
+                    break;
+
+                setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE);
+                break;
+        }
+    }
+
+    private void handleKeyBoard(String[] keys) {
+        // Calculate right vector
+        double[] worldUp = { 0, 1, 0 };
+        double[] rightVector = VectorUtils.crossProduct(frontVector, worldUp);
+
+        // Handle movement
+        for (String key : keys) {
+            double[] movementVec = new double[3];
+            switch (key.toLowerCase()) {
+                case "w": // Forward
+                    movementVec[0] += frontVector[0] * MOVEMENT_SPEED;
+                    movementVec[2] += frontVector[2] * MOVEMENT_SPEED;
+                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                            MOVEMENT_SPEED);
+                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                    break;
+                case "r": // Backward
+                    movementVec[0] -= frontVector[0] * MOVEMENT_SPEED;
+                    movementVec[2] -= frontVector[2] * MOVEMENT_SPEED;
+                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                            MOVEMENT_SPEED);
+                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                    break;
+                case "a": // Strafe left
+                    movementVec[0] -= rightVector[0] * MOVEMENT_SPEED;
+                    movementVec[2] -= rightVector[2] * MOVEMENT_SPEED;
+                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                            MOVEMENT_SPEED);
+                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                    break;
+                case "s": // Strafe right
+                    movementVec[0] += rightVector[0] * MOVEMENT_SPEED;
+                    movementVec[2] += rightVector[2] * MOVEMENT_SPEED;
+                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
+                            MOVEMENT_SPEED);
+                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
+                    break;
+                case " ": // Space bar
+                    cameraPos[1] += MOVEMENT_SPEED;
+                    break;
+                case "c":
+                    cameraPos[1] -= MOVEMENT_SPEED;
+                    break;
+            }
+        }
+        updateCamera();
+        // might want to handle this in new method
+        // TODO: set of chunks to render update set when changing chunks
+        // only rerender chunks that are new in set
+        if (currentChunk != playerChunk()) {
+            currentChunk = playerChunk();
+            chunks.computeIfAbsent(currentChunk, k -> new Chunk(currentChunk));
+            chunks.get(currentChunk).renderBlocks();
+        }
+    }
+
     public void updateCamera() {
         // rate limiter
         long currentTime = System.currentTimeMillis();
@@ -177,11 +183,23 @@ class WebGL implements Clerk {
         lastUpdateTimestamp = currentTime;
 
         // updateCamera
-        Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + "," + yaw + "," + pitch + ");");
+        Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + ","
+                + yaw + "," + pitch + ");");
     }
 
-    // TODO: what if max height
     public void setBlock(int x, int y, int z, BlockType blockType) {
+        // prevent blocks placing out of bounds
+        if (y < 0 || y >= MAX_HEIGHT) {
+            System.out.println("Block height must be between 0 and " + MAX_HEIGHT + ", got: " + y);
+            return;
+        }
+
+        // prevent blocks placing on already existing ones
+        if (getBlock(x, y, z) != BlockType.AIR && blockType != BlockType.AIR) {
+            System.out.println("Block already exists at position: (" + x + ", " + y + ", " + z + ")");
+            return;
+        }
+
         Chunk chunk;
         // set block in java script(webGL)
         if (blockType == BlockType.AIR) {
@@ -190,74 +208,93 @@ class WebGL implements Clerk {
                 return;
             Clerk.call(view, "gl" + ID + ".removeBlock(" + x + "," + y + "," + z + ");");
         } else {
-            chunk = chunks.computeIfAbsent(getChunkHash(x, z), k -> new Chunk(x, z));
+            chunk = chunks.computeIfAbsent(getChunkHash(x, z), k -> new Chunk(getChunkHash(x, z)));
             Clerk.call(view, "gl" + ID + ".addBlock(" + x + "," + y + "," + z + "," + blockType.getId() + ");");
         }
 
         // set block in java(chunk)
         int localX = Math.floorMod(x, CHUNK_SIZE);
-        int localY = Math.floorMod(y, MAX_HEIGHT);
         int localZ = Math.floorMod(z, CHUNK_SIZE);
-        chunk.setBlock(localX, localY, localZ, blockType);
+        chunk.setBlock(localX, y, localZ, blockType);
     }
 
-    public BlockType getBlock(int x, int y, int z) {
-        Chunk chunk = chunks.get(getChunkHash(x, z));
-
-        if (chunk == null)
-            return BlockType.AIR;
-
-        int localX = Math.floorMod(x, CHUNK_SIZE);
-        int localY = Math.floorMod(y, MAX_HEIGHT);
-        int localZ = Math.floorMod(z, CHUNK_SIZE);
-
-        return chunk.getBlock(localX, localY, localZ);
+    // return the chunk the player is in
+    public long playerChunk() {
+        return getChunkHash((int) cameraPos[0], (int) cameraPos[2]);
     }
 
-    // NOTE: what if numbers are extremely large/small
-    // is this right pos for this method
-    private long getChunkHash(int x, int z) {
-        int chunkX = x / CHUNK_SIZE;
-        int chunkZ = z / CHUNK_SIZE;
-        return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
-    }
-
-    class Chunk {
-        private BlockType[][][] blocks;
-
-        public Chunk(int x, int z) {
-            this.blocks = new BlockType[CHUNK_SIZE][MAX_HEIGHT][CHUNK_SIZE];
-
-            // Initialize the chunk with default blocks (e.g., AIR)
-            for (int i = 0; i < CHUNK_SIZE; i++) {
-                for (int j = 0; j < MAX_HEIGHT; j++) {
-                    for (int k = 0; k < CHUNK_SIZE; k++) {
-                        blocks[i][j][k] = BlockType.AIR;
-                    }
-                }
-            }
-        }
-
-        public BlockType getBlock(int x, int y, int z) {
-            validateChunkCoordinates(x, y, z);
-            return blocks[x][y][z];
-        }
-
-        public void setBlock(int x, int y, int z, BlockType blockType) {
-            validateChunkCoordinates(x, y, z);
-            blocks[x][y][z] = blockType;
-        }
-
-        private void validateChunkCoordinates(int x, int y, int z) {
-            if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= MAX_HEIGHT || z < 0 || z >= CHUNK_SIZE) {
-                throw new IllegalArgumentException(
-                        String.format("Chunk coordinates must be between 0, 0, 0 and %d, %d, %d, got: (%d, %d, %d)",
-                                CHUNK_SIZE - 1, MAX_HEIGHT - 1, CHUNK_SIZE - 1, x, y, z));
-            }
-        }
-    }
-
+    // raycasting using Amanatides-Woo algorithm
     public int[] raycastBlock(boolean returnAdjacent) {
+        // Starting position and direction
+        double[] origin = cameraPos.clone();
+        double[] direction = frontVector.clone();
+
+        // Current voxel coordinates
+        int[] currentVoxel = {
+                (int) Math.floor(origin[0]),
+                (int) Math.floor(origin[1]),
+                (int) Math.floor(origin[2])
+        };
+
+        // Check initial voxel
+        if (getBlock(currentVoxel[0], currentVoxel[1], currentVoxel[2]) != BlockType.AIR) {
+            return returnAdjacent ? null : currentVoxel.clone();
+        }
+
+        // Step directions
+        int[] step = new int[3];
+        double[] tMax = new double[3];
+        double[] tDelta = new double[3];
+        final double epsilon = 1e-8;
+
+        // Initialize algorithm parameters
+        for (int i = 0; i < 3; i++) {
+            if (Math.abs(direction[i]) < epsilon) {
+                // Parallel to axis, handle with large values
+                step[i] = 0;
+                tMax[i] = Double.POSITIVE_INFINITY;
+                tDelta[i] = 0;
+            } else {
+                step[i] = direction[i] > 0 ? 1 : -1;
+                double voxelBoundary = currentVoxel[i] + (direction[i] > 0 ? 1 : 0);
+                tMax[i] = (voxelBoundary - origin[i]) / direction[i];
+                tDelta[i] = step[i] / direction[i];
+            }
+        }
+
+        // Previous voxel for adjacent checks
+        int[] prevVoxel = currentVoxel.clone();
+        double totalDistance = 0.0;
+
+        // Traverse the voxel grid
+        while (totalDistance < MAX_REACH) {
+            // Find axis with smallest tMax
+            int axis = 0;
+            if (tMax[0] > tMax[1])
+                axis = 1;
+            if (tMax[axis] > tMax[2])
+                axis = 2;
+
+            // Save previous voxel before moving
+            prevVoxel = currentVoxel.clone();
+
+            // Move to next voxel
+            currentVoxel[axis] += step[axis];
+            totalDistance = tMax[axis];
+            tMax[axis] += tDelta[axis];
+
+            // Check if new voxel contains a block
+            if (getBlock(currentVoxel[0], currentVoxel[1], currentVoxel[2]) != BlockType.AIR) {
+                return returnAdjacent ? prevVoxel : currentVoxel.clone();
+            }
+        }
+
+        // No block found within range
+        System.out.println("no block in range");
+        return null;
+    }
+
+    public int[] raycastBlockDDA(boolean returnAdjacent) {
         // Starting position and direction
         double[] ray = cameraPos.clone();
         double[] rayDir = frontVector.clone();
@@ -325,5 +362,108 @@ class WebGL implements Clerk {
         // No block found within range
         System.out.println("no block in range");
         return null;
+    }
+
+    public BlockType getBlock(int x, int y, int z) {
+        Chunk chunk = chunks.get(getChunkHash(x, z));
+
+        if (chunk == null)
+            return BlockType.AIR;
+
+        int localX = Math.floorMod(x, CHUNK_SIZE);
+        int localZ = Math.floorMod(z, CHUNK_SIZE);
+
+        return chunk.getBlock(localX, y, localZ);
+    }
+
+    class Chunk {
+        public BlockType[][][] blocks; // private
+        public long hash; // private
+
+        public Chunk(long hash) {
+            this.hash = hash;
+
+            this.blocks = new BlockType[CHUNK_SIZE][MAX_HEIGHT][CHUNK_SIZE];
+
+            // Initialize the chunk with default blocks (e.g., AIR)
+            // NOTE: this spawns invisible blocks at the bottom of the world
+            for (int i = 0; i < CHUNK_SIZE; i++) {
+                for (int j = 0; j < MAX_HEIGHT; j++) {
+                    for (int k = 0; k < CHUNK_SIZE; k++) {
+                        if (j == 0) {
+                            blocks[i][j][k] = BlockType.GRASS;
+                        } else
+                            blocks[i][j][k] = BlockType.AIR;
+                    }
+                }
+            }
+        }
+
+        public BlockType getBlock(int x, int y, int z) {
+            validateChunkCoordinates(x, y, z);
+            return blocks[x][y][z];
+        }
+
+        public void setBlock(int x, int y, int z, BlockType blockType) {
+            validateChunkCoordinates(x, y, z);
+            blocks[x][y][z] = blockType;
+        }
+
+        public int[] getBlockCoord(int x, int y, int z) {
+            int[] coord = hashToChunkCoord(hash);
+            System.out.println("Chunk: (" + coord[0] + ", " + coord[1] + ")");
+            return new int[] { x, y, z };
+        }
+
+        private void validateChunkCoordinates(int x, int y, int z) {
+            if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= MAX_HEIGHT || z < 0 || z >= CHUNK_SIZE) {
+                throw new IllegalArgumentException(
+                        String.format("Chunk coordinates must be between 0, 0, 0 and %d, %d, %d, got: (%d, %d, %d)",
+                                CHUNK_SIZE - 1, MAX_HEIGHT - 1, CHUNK_SIZE - 1, x, y, z));
+            }
+        }
+
+        public void renderBlocks() {
+            for (int i = 0; i < CHUNK_SIZE; i++) {
+                for (int j = 0; j < MAX_HEIGHT; j++) {
+                    for (int k = 0; k < CHUNK_SIZE; k++) {
+                        if (blocks[i][j][k] != BlockType.AIR) {
+                            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
+                            chunkCoords[0] = chunkCoords[0] * CHUNK_SIZE + i;
+                            chunkCoords[1] = chunkCoords[1] * CHUNK_SIZE + k;
+                            Clerk.call(view, "gl" + ID + ".addBlock(" + chunkCoords[0] + "," + j + "," + chunkCoords[1]
+                                    + "," + blocks[i][j][k].getId() + ");");
+                        }
+                    }
+                }
+            }
+        }
+
+        // print pos of every non air block in chunk
+        // debug
+        public void prnt() {
+            for (int i = 0; i < CHUNK_SIZE; i++) {
+                for (int j = 0; j < MAX_HEIGHT; j++) {
+                    for (int k = 0; k < CHUNK_SIZE; k++) {
+                        if (blocks[i][j][k] != BlockType.AIR) {
+                            System.out.println("Block at: (" + i + ", " + j + ", " + k + ")");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // hash utility
+    public static long getChunkHash(int x, int z) {
+        int chunkX = Math.floorDiv(x, CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, CHUNK_SIZE);
+        return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
+    }
+
+    public static int[] hashToChunkCoord(long hash) {
+        int chunkX = (int) (hash >> 32);
+        int chunkZ = (int) hash;
+        return new int[] { chunkX, chunkZ };
     }
 }

@@ -2,12 +2,12 @@ class WebGL {
     constructor(canvas) {
         this.canvas = canvas;
         if (!canvas) {
-            throw new Error("Canvas element not provided");
+            console.error("Canvas element not provided");
         }
 
         this.gl = getContext(canvas);
         if (!this.gl) {
-            throw new Error("Failed to initialize WebGL context");
+            console.error("Failed to initialize WebGL context");
         }
 
         this.camera = {
@@ -40,17 +40,17 @@ class WebGL {
         this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES);
         this.cubeIndices = createStaticIndexBuffer(this.gl, this.CUBE_INDICES);
         if (!this.cubeVertices || !this.cubeIndices) {
-            throw new Error('Failed to create vertex or index buffers');
+            console.error('Failed to create vertex or index buffers');
         }
 
         this.crosshairBuffer = createStaticVertexBuffer(this.gl, this.CROSSHAIR_VERTICES);
         if (!this.crosshairBuffer) {
-            throw new Error('Failed to create crosshair buffer');
+            console.error('Failed to create crosshair buffer');
         }
 
         this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
         if (!this.program) {
-            throw new Error('Failed to create WebGL program');
+            console.error('Failed to create WebGL program');
         }
         this.setupAttributesAndUniforms();
         this.setupVAO();
@@ -82,7 +82,7 @@ class WebGL {
         ]);
 
         if (!this.cubeVao) {
-            throw new Error('Failed to create VAO');
+            console.error('Failed to create VAO');
         }
     }
 
@@ -121,7 +121,10 @@ class WebGL {
                 this.textures.set(name, texture);
                 resolve(texture);
             };
-            image.onerror = reject;
+            image.onerror = () => {
+                console.error(`Failed to load texture: ${imageUrl}`);
+                reject(new Error(`Failed to load texture: ${imageUrl}`));
+            };
         });
     }
 
@@ -362,6 +365,15 @@ class WebGL {
     }
 
     addBlock(x, y, z, blockType) {
+        // check if block already exists
+        if (this.shapes.some(shape => {
+            return shape.pos[0] === x &&
+                shape.pos[1] === y &&
+                shape.pos[2] === z;
+        })) {
+            return;
+        }
+        // add block
         this.shapes.push(new Shape(
             this.gl,                        // Added gl parameter
             [x, y, z],                      // position
