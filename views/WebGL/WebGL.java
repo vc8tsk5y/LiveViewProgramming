@@ -2,6 +2,7 @@ import java.util.concurrent.*;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Random;
 
 class WebGL implements Clerk {
     // LiveView
@@ -9,7 +10,7 @@ class WebGL implements Clerk {
     LiveView view;
 
     // Player movement state
-    private double[] cameraPos = { 0, 2, 0 }; // x, y, z
+    private double[] cameraPos = { 0, 50, 0 }; // x, y, z
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
@@ -22,7 +23,7 @@ class WebGL implements Clerk {
     // World
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 256;
-    private static final int RENDER_DISTANCE = 3; // Number of chunks to render in each direction
+    private static final int RENDER_DISTANCE = 2; // Number of chunks to render in each direction
     public Map<Long, Chunk> chunks; // private
     private long currentChunkHash;
     private Set<Long> loadedChunks = new HashSet<>();
@@ -31,6 +32,9 @@ class WebGL implements Clerk {
     private final ExecutorService chunkExecutor = Executors.newFixedThreadPool(2);
     // Queue for main-thread tasks (WebGL operations)
     private final ConcurrentLinkedQueue<Runnable> mainThreadTasks = new ConcurrentLinkedQueue<>();
+
+    // Random world generation
+    private final Noise terrainNoise = new Noise(12345);
 
     public WebGL(LiveView view) {
         this.view = view;
@@ -56,10 +60,6 @@ class WebGL implements Clerk {
     public void handleTexturesLoad() {
         view.createResponseContext("/texturesload", (data) -> {
             handleChunkRendering();
-            setBlock(0, 1, 0, BlockType.DIRT);
-            setBlock(15, 1, 0, BlockType.DIRT);
-            setBlock(0, 1, 15, BlockType.DIRT);
-            setBlock(15, 1, 15, BlockType.DIRT);
         });
     }
 
@@ -76,7 +76,7 @@ class WebGL implements Clerk {
             pitch -= mouseY * MOUSE_SENSITIVITY;
 
             // Clamp pitch to prevent flipping
-            pitch = Math.max(-89, Math.min(89, pitch));
+            pitch = Math.max(-89.9, Math.min(89.9, pitch));
 
             // Normalize yaw to 0-360 range
             yaw = (yaw % 360 + 360) % 360;
@@ -367,26 +367,35 @@ class WebGL implements Clerk {
         public long hash; // private
 
         public Chunk(long hash) {
+            this.blocks = new BlockType[CHUNK_SIZE][MAX_HEIGHT][CHUNK_SIZE];
             this.hash = hash;
 
-            this.blocks = new BlockType[CHUNK_SIZE][MAX_HEIGHT][CHUNK_SIZE];
+            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
 
-            // Initialize the chunk with default blocks (e.g., AIR)
-            // NOTE: this spawns invisible blocks at the bottom of the world
             for (int i = 0; i < CHUNK_SIZE; i++) {
-                for (int j = 0; j < MAX_HEIGHT; j++) {
-                    for (int k = 0; k < CHUNK_SIZE; k++) {
-                        if (j == 0) {
-                            blocks[i][j][k] = BlockType.GRASS;
-                        } else
+                for (int k = 0; k < CHUNK_SIZE; k++) {
+                    int globalX = chunkCoords[0] * CHUNK_SIZE + i;
+                    int globalZ = chunkCoords[1] * CHUNK_SIZE + k;
+                    int height = WebGL.this.generateHeight(globalX, globalZ);
+
+                    for (int j = 0; j < MAX_HEIGHT; j++) {
+                        if (j <= height) {
+                            if (j == height) {
+                                blocks[i][j][k] = BlockType.GRASS;
+                            } else if (j > height - 4) {
+                                blocks[i][j][k] = BlockType.DIRT;
+                            } else {
+                                blocks[i][j][k] = BlockType.STONE;
+                            }
+                        } else {
                             blocks[i][j][k] = BlockType.AIR;
+                        }
                     }
                 }
             }
         }
 
         public BlockType getBlock(int x, int y, int z) {
-            validateChunkCoordinates(x, y, z);
             return blocks[x][y][z];
         }
 
@@ -411,16 +420,22 @@ class WebGL implements Clerk {
 
         public void load() {
             StringBuilder script = new StringBuilder();
+            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
                     for (int k = 0; k < CHUNK_SIZE; k++) {
                         if (blocks[i][j][k] != BlockType.AIR) {
-                            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
-                            int x = chunkCoords[0] * CHUNK_SIZE + i;
-                            int z = chunkCoords[1] * CHUNK_SIZE + k;
-                            script.append("gl").append(ID).append(".addBlock(")
-                                    .append(x).append(",").append(j).append(",").append(z)
-                                    .append(",").append(blocks[i][j][k].getId()).append(");");
+                            int globalX = chunkCoords[0] * CHUNK_SIZE + i;
+                            int globalZ = chunkCoords[1] * CHUNK_SIZE + k;
+                            int globalY = j;
+
+                            // System.out.println("Block at: (" + globalX + ", " + globalY + ", " + globalZ + ")");
+
+                            if (isVisible(globalX, globalY, globalZ)) {
+                                script.append("gl").append(ID).append(".addBlock(")
+                                        .append(globalX).append(",").append(globalY).append(",").append(globalZ)
+                                        .append(",").append(blocks[i][j][k].getId()).append(");");
+                            }
                         }
                     }
                 }
@@ -472,5 +487,90 @@ class WebGL implements Clerk {
         int chunkX = (int) (hash >> 32);
         int chunkZ = (int) hash;
         return new int[] { chunkX, chunkZ };
+    }
+
+    // could extent if i add tranrparent blocks
+    public boolean isVisible(int x, int y, int z) {
+        System.out.println("top" + getBlock(x, y + 1, z));
+        System.out.println("bottom" + getBlock(x, y - 1, z));
+        System.out.println("right" + getBlock(x + 1, y, z));
+        System.out.println("left" + getBlock(x - 1, y, z));
+        System.out.println("front" + getBlock(x, y, z + 1));
+        System.out.println("back" + getBlock(x, y, z - 1));
+        return getBlock(x, y + 1, z) == BlockType.AIR ||    // top
+                getBlock(x, y - 1, z) == BlockType.AIR ||   // bottom
+                getBlock(x + 1, y, z) == BlockType.AIR ||   // right
+                getBlock(x - 1, y, z) == BlockType.AIR ||   // left
+                getBlock(x, y, z + 1) == BlockType.AIR ||   // front
+                getBlock(x, y, z - 1) == BlockType.AIR;     // back
+    }
+
+    // Generate height using Perlin noise
+    private int generateHeight(int globalX, int globalZ) {
+        double scale = 0.05;
+        double noiseValue = terrainNoise.noise(globalX * scale, 0, globalZ * scale);
+        int baseHeight = 8;
+        int heightRange = 4;
+        return (int) (noiseValue * heightRange + baseHeight);
+    }
+
+    private static class Noise {
+        private static final int PERMUTATION_SIZE = 256;
+        private int[] perm = new int[PERMUTATION_SIZE * 2];
+
+        public Noise(long seed) {
+            Random rand = new Random(seed);
+            int[] p = new int[PERMUTATION_SIZE];
+            for (int i = 0; i < PERMUTATION_SIZE; i++)
+                p[i] = i;
+            for (int i = 0; i < PERMUTATION_SIZE; i++) {
+                int j = rand.nextInt(PERMUTATION_SIZE);
+                int temp = p[i];
+                p[i] = p[j];
+                p[j] = temp;
+            }
+            for (int i = 0; i < PERMUTATION_SIZE; i++) {
+                perm[i] = perm[i + PERMUTATION_SIZE] = p[i];
+            }
+        }
+
+        private double fade(double t) {
+            return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+
+        private double lerp(double t, double a, double b) {
+            return a + t * (b - a);
+        }
+
+        private double grad(int hash, double x, double y, double z) {
+            int h = hash & 15;
+            double u = h < 8 ? x : y;
+            double v = h < 4 ? y : h == 12 || h == 14 ? x : z;
+            return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+        }
+
+        public double noise(double x, double y, double z) {
+            int X = (int) Math.floor(x) & 255;
+            int Y = (int) Math.floor(y) & 255;
+            int Z = (int) Math.floor(z) & 255;
+            x -= Math.floor(x);
+            y -= Math.floor(y);
+            z -= Math.floor(z);
+            double u = fade(x);
+            double v = fade(y);
+            double w = fade(z);
+
+            int A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z;
+            int B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+
+            return lerp(w, lerp(v, lerp(u, grad(perm[AA], x, y, z),
+                    grad(perm[BA], x - 1, y, z)),
+                    lerp(u, grad(perm[AB], x, y - 1, z),
+                            grad(perm[BB], x - 1, y - 1, z))),
+                    lerp(v, lerp(u, grad(perm[AA + 1], x, y, z - 1),
+                            grad(perm[BA + 1], x - 1, y, z - 1)),
+                            lerp(u, grad(perm[AB + 1], x, y - 1, z - 1),
+                                    grad(perm[BB + 1], x - 1, y - 1, z - 1))));
+        }
     }
 }
