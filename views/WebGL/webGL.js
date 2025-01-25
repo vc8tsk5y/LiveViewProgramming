@@ -16,7 +16,7 @@ class WebGL {
             up: [0, 1, 0],
             right: [-1, 0, 0]
         };
-        this.shapes = [];
+        this.blocksMap = new Map();
         this.textures = new Map(); // store the textures here
         this.setupShaders();
         this.setupGeometry();
@@ -159,17 +159,18 @@ class WebGL {
         this.vertexShaderSourceCode = `#version 300 es
         precision mediump float;
 
-        in vec3 vertexPosition;
-        in vec3 vertexColor;
-        in vec2 texCoord;
+        in vec3 vertexPosition;       // Vertex position (per-vertex attribute)
+        in vec3 vertexColor;          // Vertex color (per-vertex attribute)
+        in vec2 texCoord;             // Texture coordinates (per-vertex attribute)
 
-        out vec3 fragmentColor;
-        out vec2 fragmentTexCoord;
+        out vec3 fragmentColor;       // Output to fragment shader
+        out vec2 fragmentTexCoord;    // Output to fragment shader
 
-        uniform mat4 matWorld;
-        uniform mat4 matViewProj;
+        uniform mat4 matWorld;        // World matrix (applied to each instance)
+        uniform mat4 matViewProj;     // Combined view-projection matrix
 
         void main() {
+            // Pass color and texture coordinates to the fragment shader
             fragmentColor = vertexColor;
             fragmentTexCoord = texCoord;
 
@@ -179,13 +180,13 @@ class WebGL {
         this.fragmentShaderSourceCode = `#version 300 es
         precision mediump float;
 
-        in vec3 fragmentColor;
-        in vec2 fragmentTexCoord;
+        in vec3 fragmentColor;        // Input from vertex shader
+        in vec2 fragmentTexCoord;     // Input from vertex shader
 
-        uniform sampler2D textureSampler;
-        uniform bool useTexture;
+        uniform sampler2D textureSampler; // Texture sampler
+        uniform bool useTexture;          // Whether to use texture or not
 
-        out vec4 outputColor;
+        out vec4 outputColor;             // Output color
 
         void main() {
             if (useTexture) {
@@ -334,7 +335,7 @@ class WebGL {
 
         gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
 
-        this.shapes.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
+        this.blocksMap.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
 
         // Draw the crosshair (after other objects)
         this.drawCrosshair();
@@ -366,16 +367,14 @@ class WebGL {
 
     addBlock(x, y, z, blockType) {
         // Check if block already exists
-        const blockExists = this.shapes.some(shape =>
-            shape.pos[0] === x && shape.pos[1] === y && shape.pos[2] === z
-        );
-        if (blockExists) {
+        const key = `${x},${y},${z}`;
+        if (this.blocksMap.has(key)) {
             console.log(`Block already exists at (${x}, ${y}, ${z})`);
             return;
         }
 
         // add block
-        this.shapes.push(new Shape(
+        const shape = new Shape(
             this.gl,                        // Added gl parameter
             [x, y, z],                      // position
             1.0,                            // scale
@@ -384,18 +383,34 @@ class WebGL {
             this.cubeVao,                   // vertex array object
             this.CUBE_INDICES.length,       //number of indices
             this.textures.get(blockType)    // texture
-        ));
+        );
+        this.blocksMap.set(key, shape);
     }
 
     removeBlock(x, y, z) {
-        this.shapes = this.shapes.filter(shape =>
-            !(shape.pos[0] === x && shape.pos[1] === y && shape.pos[2] === z)
-        );
+        const key = `${x},${y},${z}`;
+        this.blocksMap.delete(key);
     }
 
     addBlocks(blocks) {
-        blocks.forEach(block => {
-            this.addBlock(block.x, block.y, block.z, block.blockType);
+        const newBlocks = blocks.filter(block => {
+            const key = `${block.x},${block.y},${block.z}`;
+            return !this.blocksMap.has(key);
+        });
+
+        newBlocks.forEach(block => {
+            const key = `${block.x},${block.y},${block.z}`;
+            const shape = new Shape(
+                this.gl,
+                [block.x, block.y, block.z],
+                1.0,
+                this.UP_VEC,
+                0,
+                this.cubeVao,
+                this.CUBE_INDICES.length,
+                this.textures.get(block.blockType)
+            );
+            this.blocksMap.set(key, shape);
         });
     }
 
