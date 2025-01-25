@@ -11,7 +11,7 @@ class WebGL {
         }
 
         this.camera = {
-            position: [0, 0, 0],
+            position: [0, 2, 0],
             front: [0, 0, 1],
             up: [0, 1, 0],
             right: [-1, 0, 0]
@@ -136,7 +136,7 @@ class WebGL {
                 this.loadTexture(3, '../textures/dirt.png'),
             ]);
 
-
+            // Notify Java that textures are loaded
             fetch('http://localhost:' + window.location.port + '/texturesload', {
                 method: 'POST',
                 body: JSON.stringify("Loaded textures"),
@@ -365,14 +365,15 @@ class WebGL {
     }
 
     addBlock(x, y, z, blockType) {
-        // check if block already exists
-        if (this.shapes.some(shape => {
-            return shape.pos[0] === x &&
-                shape.pos[1] === y &&
-                shape.pos[2] === z;
-        })) {
+        // Check if block already exists
+        const blockExists = this.shapes.some(shape =>
+            shape.pos[0] === x && shape.pos[1] === y && shape.pos[2] === z
+        );
+        if (blockExists) {
+            console.log(`Block already exists at (${x}, ${y}, ${z})`);
             return;
         }
+
         // add block
         this.shapes.push(new Shape(
             this.gl,                        // Added gl parameter
@@ -387,10 +388,20 @@ class WebGL {
     }
 
     removeBlock(x, y, z) {
-        this.shapes = this.shapes.filter(shape => {
-            return !(shape.pos[0] === x &&
-                shape.pos[1] === y &&
-                shape.pos[2] === z);
+        this.shapes = this.shapes.filter(shape =>
+            !(shape.pos[0] === x && shape.pos[1] === y && shape.pos[2] === z)
+        );
+    }
+
+    addBlocks(blocks) {
+        blocks.forEach(block => {
+            this.addBlock(block.x, block.y, block.z, block.blockType);
+        });
+    }
+
+    removeBlocks(blocks) {
+        blocks.forEach(block => {
+            this.removeBlock(block.x, block.y, block.z);
         });
     }
 }

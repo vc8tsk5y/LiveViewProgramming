@@ -71,8 +71,7 @@ const mnKEvent = {
                 method: 'POST',
                 body: JSON.stringify(data),
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Connection': 'keep-alive'
+                    'Content-Type': 'application/json'
                 },
                 keepalive: true
             });
@@ -87,8 +86,7 @@ const mnKEvent = {
                 method: 'POST',
                 body: JSON.stringify(data),
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Connection': 'keep-alive'
+                    'Content-Type': 'application/json'
                 },
                 keepalive: true
             });
