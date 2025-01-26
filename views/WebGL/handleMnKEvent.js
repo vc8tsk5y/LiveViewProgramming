@@ -1,5 +1,3 @@
-// net::ERR_INVALID_CHUNKED_ENCODING 200 (OK) is the error from /events
-// net::ERR_INSUFFICIENT_RESOURCES is the error from /mouseevents
 const mnKEvent = {
     // set of currently pressed keys
     activeKeys: new Set(),
@@ -80,6 +78,7 @@ const mnKEvent = {
         }
     },
 
+    // split mouse data to avoid sending to much data to the same url
     sendUpdateMouse: async function(data) {
         try {
             await fetch('http://localhost:' + window.location.port + '/mouseevent', {

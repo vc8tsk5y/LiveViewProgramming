@@ -1,5 +1,5 @@
-import java.util.concurrent.*;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Random;
@@ -22,8 +22,8 @@ class WebGL implements Clerk {
 
     // World
     private static final int CHUNK_SIZE = 16;
-    private static final int MAX_HEIGHT = 256;
-    private static final int RENDER_DISTANCE = 0; // Number of chunks to render in each direction
+    private static final int MAX_HEIGHT = 64;
+    private static final int RENDER_DISTANCE = 2; // Number of chunks to render in each direction
     public Map<Long, Chunk> chunks; // private
     private long currentChunkHash;
     private Set<Long> loadedChunks = new HashSet<>();
@@ -226,6 +226,18 @@ class WebGL implements Clerk {
         }
     }
 
+    public BlockType getBlock(int x, int y, int z) {
+        Chunk chunk = chunks.get(getChunkHash(x, z));
+
+        if (chunk == null || y < 0 || y >= MAX_HEIGHT)
+            return null;
+
+        int localX = Math.floorMod(x, CHUNK_SIZE);
+        int localZ = Math.floorMod(z, CHUNK_SIZE);
+
+        return chunk.getBlock(localX, y, localZ);
+    }
+
     public void setBlock(int x, int y, int z, BlockType blockType) {
         // prevent blocks placing out of bounds
         if (y < 0 || y >= MAX_HEIGHT) {
@@ -233,33 +245,51 @@ class WebGL implements Clerk {
             return;
         }
 
-        // prevent blocks placing on already existing ones
-        if (getBlock(x, y, z) != BlockType.AIR && blockType != BlockType.AIR) {
-            System.out.println("Block already exists at position: (" + x + ", " + y + ", " + z + ")");
-            return;
-        }
-
-        Chunk chunk;
-        // set block in java script(webGL)
-        if (blockType == BlockType.AIR) {
-            chunk = chunks.get(getChunkHash(x, z));
-            if (chunk == null)
-                return;
-            Clerk.call(view, "gl" + ID + ".removeBlock(" + x + "," + y + "," + z + ");");
-        } else {
-            chunk = chunks.computeIfAbsent(getChunkHash(x, z), k -> new Chunk(getChunkHash(x, z)));
-            Clerk.call(view, "gl" + ID + ".addBlock(" + x + "," + y + "," + z + "," + blockType.getId() + ");");
-        }
-
         // set block in java(chunk)
         int localX = Math.floorMod(x, CHUNK_SIZE);
         int localZ = Math.floorMod(z, CHUNK_SIZE);
+
+        Chunk chunk = chunks.computeIfAbsent(getChunkHash(x, z), k -> new Chunk(getChunkHash(x, z)));
         chunk.setBlock(localX, y, localZ, blockType);
+
+        areaReload(x, y, z, 1);
     }
 
-    // return the chunk the player is in
+    public void setBlock(BlockType blockType) {
+        setBlock((int) cameraPos[0], (int) cameraPos[1], (int) cameraPos[2], blockType);
+    }
+
+    public void tp(double x, double y, double z) {
+        cameraPos[0] = x;
+        cameraPos[1] = y;
+        cameraPos[2] = z;
+        updateCamera();
+    }
+
+    // Return the chunk the player is in
     public long playerChunk() {
         return getChunkHash((int) cameraPos[0], (int) cameraPos[2]);
+    }
+
+    public void areaReload(int x, int y, int z, int range) {
+        // if chunk is not loaded area should not reload
+        if (!loadedChunks.contains(getChunkHash(x, z))) return;
+        String unloadCall = "gl" + ID + ".removeBlocksInArea(" + (x - range) + "," + (x + range) + "," + (y - range)
+                + "," + (y + range) + "," + (z - range) + "," + (z + range) + ");";
+        StringBuilder loadCall = new StringBuilder();
+        for (int i = (x - range); i <= (x + range); i++) {
+            for (int j = (y - range); j <= (y + range); j++) {
+                for (int k = (z - range); k <= (z + range); k++) {
+                    if (getBlock(i, j, k) != BlockType.AIR && isVisible(i, j, k)) {
+                        loadCall.append("gl").append(ID).append(".addBlock(")
+                                .append(i).append(",").append(j).append(",").append(k)
+                                .append(",").append(getBlock(i, j, k).getId()).append(");");
+                    }
+                }
+            }
+        }
+        Clerk.call(view, unloadCall.toString());
+        Clerk.call(view, loadCall.toString());
     }
 
     // raycasting using Amanatides-Woo algorithm
@@ -333,18 +363,6 @@ class WebGL implements Clerk {
         return null;
     }
 
-    public BlockType getBlock(int x, int y, int z) {
-        Chunk chunk = chunks.get(getChunkHash(x, z));
-
-        if (chunk == null || y < 0 || y >= MAX_HEIGHT)
-            return BlockType.AIR;
-
-        int localX = Math.floorMod(x, CHUNK_SIZE);
-        int localZ = Math.floorMod(z, CHUNK_SIZE);
-
-        return chunk.getBlock(localX, y, localZ);
-    }
-
     class Chunk {
         public BlockType[][][] blocks; // private
         public long hash; // private
@@ -378,12 +396,25 @@ class WebGL implements Clerk {
             }
         }
 
+        // debug for empty chunk
+        // public Chunk(long hash) {
+        // this.blocks = new BlockType[CHUNK_SIZE][MAX_HEIGHT][CHUNK_SIZE];
+        // this.hash = hash;
+        //
+        // for (int i = 0; i < CHUNK_SIZE; i++) {
+        // for (int j = 0; j < MAX_HEIGHT; j++) {
+        // for (int k = 0; k < CHUNK_SIZE; k++) {
+        // blocks[i][j][k] = BlockType.AIR;
+        // }
+        // }
+        // }
+        // }
+
         public BlockType getBlock(int x, int y, int z) {
             return blocks[x][y][z];
         }
 
         public void setBlock(int x, int y, int z, BlockType blockType) {
-            validateChunkCoordinates(x, y, z);
             blocks[x][y][z] = blockType;
         }
 
@@ -393,16 +424,8 @@ class WebGL implements Clerk {
             return new int[] { x, y, z };
         }
 
-        private void validateChunkCoordinates(int x, int y, int z) {
-            if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= MAX_HEIGHT || z < 0 || z >= CHUNK_SIZE) {
-                throw new IllegalArgumentException(
-                        String.format("Chunk coordinates must be between 0, 0, 0 and %d, %d, %d, got: (%d, %d, %d)",
-                                CHUNK_SIZE - 1, MAX_HEIGHT - 1, CHUNK_SIZE - 1, x, y, z));
-            }
-        }
-
         public void load() {
-            StringBuilder script = new StringBuilder();
+            StringBuilder call = new StringBuilder();
             int[] chunkCoords = WebGL.hashToChunkCoord(hash);
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
@@ -413,7 +436,7 @@ class WebGL implements Clerk {
                             int globalY = j;
 
                             if (isVisible(globalX, globalY, globalZ)) {
-                                script.append("gl").append(ID).append(".addBlock(")
+                                call.append("gl").append(ID).append(".addBlock(")
                                         .append(globalX).append(",").append(globalY).append(",").append(globalZ)
                                         .append(",").append(blocks[i][j][k].getId()).append(");");
                             }
@@ -421,43 +444,47 @@ class WebGL implements Clerk {
                     }
                 }
             }
-            Clerk.script(view, script.toString());
+            Clerk.call(view, call.toString());
         }
 
         public void unload() {
-            StringBuilder script = new StringBuilder();
-            for (int i = 0; i < CHUNK_SIZE; i++) {
-                for (int j = 0; j < MAX_HEIGHT; j++) {
-                    for (int k = 0; k < CHUNK_SIZE; k++) {
-                        if (blocks[i][j][k] != BlockType.AIR) {
-                            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
-                            int x = chunkCoords[0] * CHUNK_SIZE + i;
-                            int z = chunkCoords[1] * CHUNK_SIZE + k;
-                            script.append("gl").append(ID).append(".removeBlock(")
-                                    .append(x).append(",").append(j).append(",").append(z).append(");");
-                        }
-                    }
-                }
-            }
-            Clerk.script(view, script.toString());
+            StringBuilder call = new StringBuilder();
+            int[] chunkCoords = WebGL.hashToChunkCoord(hash);
+            int xStart = chunkCoords[0] * CHUNK_SIZE;
+            int xEnd = xStart + CHUNK_SIZE - 1;
+            int zStart = chunkCoords[1] * CHUNK_SIZE;
+            int zEnd = zStart + CHUNK_SIZE - 1;
+            call.append("gl").append(ID).append(".removeBlocksInArea(")
+                    .append(xStart).append(",").append(xEnd).append(",").append(0).append(",")
+                    .append(MAX_HEIGHT - 1).append(",").append(zStart).append(",").append(zEnd)
+                    .append(");");
+            Clerk.call(view, call.toString());
         }
 
         // print pos of every non air block in chunk
         // debug
         public void prnt() {
+            int countAll = 0;
+            int countVisible = 0;
             for (int i = 0; i < CHUNK_SIZE; i++) {
                 for (int j = 0; j < MAX_HEIGHT; j++) {
                     for (int k = 0; k < CHUNK_SIZE; k++) {
                         if (blocks[i][j][k] != BlockType.AIR) {
+                            countAll++;
                             System.out.println("Block at: (" + i + ", " + j + ", " + k + ")");
+                            if (isVisible(i, j, k)) {
+                                countVisible++;
+                            }
                         }
                     }
                 }
             }
+            System.out.println("Total blocks: " + countAll);
+            System.out.println("Visible blocks: " + countVisible);
         }
     }
 
-    // hash utility
+    // Hash utility
     public static long getChunkHash(int x, int z) {
         int chunkX = Math.floorDiv(x, CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, CHUNK_SIZE);
@@ -470,14 +497,18 @@ class WebGL implements Clerk {
         return new int[] { chunkX, chunkZ };
     }
 
-    // could extent if i add transparent blocks
+    // could extend if i add transparent blocks
     public boolean isVisible(int x, int y, int z) {
-        return getBlock(x, y + 1, z) == BlockType.AIR || // top
-                getBlock(x, y - 1, z) == BlockType.AIR || // bottom
-                getBlock(x + 1, y, z) == BlockType.AIR || // right
-                getBlock(x - 1, y, z) == BlockType.AIR || // left
-                getBlock(x, y, z + 1) == BlockType.AIR || // front
-                getBlock(x, y, z - 1) == BlockType.AIR; // back
+        long hash = getChunkHash(x, z);
+        boolean top = getBlock(x, y + 1, z) == BlockType.AIR;
+        boolean btm = getBlock(x, y - 1, z) == BlockType.AIR;
+
+        // Check if block is at chunk border // NOTE: der block daneben muss auch visible ssen
+        boolean rgt = (getChunkHash(x + 1, z) == hash) ? getBlock(x + 1, y, z) == BlockType.AIR : false;
+        boolean lft = (getChunkHash(x - 1, z) == hash) ? getBlock(x - 1, y, z) == BlockType.AIR : false;
+        boolean frt = (getChunkHash(x, z + 1) == hash) ? getBlock(x, y, z + 1) == BlockType.AIR : false;
+        boolean bck = (getChunkHash(x, z - 1) == hash) ? getBlock(x, y, z - 1) == BlockType.AIR : false;
+        return top || btm || rgt || lft || frt || bck;
     }
 
     // Generate height using Perlin noise

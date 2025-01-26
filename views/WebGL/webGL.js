@@ -11,7 +11,7 @@ class WebGL {
         }
 
         this.camera = {
-            position: [0, 2, 0],
+            position: [0, 10, 0],
             front: [0, 0, 1],
             up: [0, 1, 0],
             right: [-1, 0, 0]
@@ -392,32 +392,19 @@ class WebGL {
         this.blocksMap.delete(key);
     }
 
-    addBlocks(blocks) {
-        const newBlocks = blocks.filter(block => {
-            const key = `${block.x},${block.y},${block.z}`;
-            return !this.blocksMap.has(key);
-        });
+    removeBlocksInArea(xStart, xEnd, yStart, yEnd, zStart, zEnd) {
+        // Ensure the coordinates are sorted, so xStart is less than or equal to xEnd, and so on
+        const [xMin, xMax] = [Math.min(xStart, xEnd), Math.max(xStart, xEnd)];
+        const [yMin, yMax] = [Math.min(yStart, yEnd), Math.max(yStart, yEnd)];
+        const [zMin, zMax] = [Math.min(zStart, zEnd), Math.max(zStart, zEnd)];
 
-        newBlocks.forEach(block => {
-            const key = `${block.x},${block.y},${block.z}`;
-            const shape = new Shape(
-                this.gl,
-                [block.x, block.y, block.z],
-                1.0,
-                this.UP_VEC,
-                0,
-                this.cubeVao,
-                this.CUBE_INDICES.length,
-                this.textures.get(block.blockType)
-            );
-            this.blocksMap.set(key, shape);
-        });
-    }
-
-    removeBlocks(blocks) {
-        blocks.forEach(block => {
-            this.removeBlock(block.x, block.y, block.z);
-        });
+        for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+                for (let z = zMin; z <= zMax; z++) {
+                    this.removeBlock(x, y, z);
+                }
+            }
+        }
     }
 }
 
