@@ -213,10 +213,10 @@ class WebGL {
             1.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.0, 1.0,
 
             // Top face
-            0.0, 1.0, 0.0, 1, 1, 1, 0.0, 1.0,
-            0.0, 1.0, 1.0, 1, 1, 1, 0.0, 0.0,
-            1.0, 1.0, 1.0, 1, 1, 1, 1.0, 0.0,
-            1.0, 1.0, 0.0, 1, 1, 1, 1.0, 1.0,
+            0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0,
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
 
             // Bottom face
             0.0, 0.0, 0.0, 0.4, 0.4, 0.4, 0.0, 0.0,
@@ -499,28 +499,13 @@ function createProgram(gl, vertexShaderSource, fragmentShaderSource) {
 
     gl.shaderSource(vertexShader, vertexShaderSource);
     gl.compileShader(vertexShader);
-    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-        const errorMessage = gl.getShaderInfoLog(vertexShader);
-        console.error('Failed to compile vertex shader');
-        return null;
-    }
 
     gl.shaderSource(fragmentShader, fragmentShaderSource);
     gl.compileShader(fragmentShader);
-    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-        const errorMessage = gl.getShaderInfoLog(fragmentShader);
-        console.error('Failed to compile fragment shader');
-        return null;
-    }
 
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const errorMessage = gl.getProgramInfoLog(program);
-        console.error('Failed to link GPU program');
-        return null;
-    }
 
     return program;
 }

@@ -10,7 +10,7 @@ class WebGL implements Clerk {
     LiveView view;
 
     // Player movement state
-    private double[] cameraPos = { 0, 50, 0 }; // x, y, z
+    private double[] cameraPos = { 0, 10, 0 }; // x, y, z
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
@@ -23,15 +23,10 @@ class WebGL implements Clerk {
     // World
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 256;
-    private static final int RENDER_DISTANCE = 2; // Number of chunks to render in each direction
+    private static final int RENDER_DISTANCE = 0; // Number of chunks to render in each direction
     public Map<Long, Chunk> chunks; // private
     private long currentChunkHash;
     private Set<Long> loadedChunks = new HashSet<>();
-
-    // Thread pool for chunk loading tasks
-    private final ExecutorService chunkExecutor = Executors.newFixedThreadPool(2);
-    // Queue for main-thread tasks (WebGL operations)
-    private final ConcurrentLinkedQueue<Runnable> mainThreadTasks = new ConcurrentLinkedQueue<>();
 
     // Random world generation
     private final Noise terrainNoise = new Noise(12345);
@@ -189,18 +184,12 @@ class WebGL implements Clerk {
         }
         lastUpdateTimestamp = currentTime;
 
-        // Process pending main-thread tasks (WebGL operations)
-        Runnable task;
-        while ((task = mainThreadTasks.poll()) != null) {
-            task.run();
-        }
-
         // updateCamera
         Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + ","
                 + yaw + "," + pitch + ");");
     }
 
-    private void handleChunkRendering() {
+    public void handleChunkRendering() {
         // Update current chunk based on new camera position
         currentChunkHash = playerChunk();
 
@@ -222,13 +211,9 @@ class WebGL implements Clerk {
 
         // Load required chunks
         for (Long hash : loadChunks) {
-            chunkExecutor.submit(() -> {
-                mainThreadTasks.add(() -> {
-                    chunks.computeIfAbsent(hash, k -> new Chunk(k));
-                    chunks.get(hash).load();
-                    loadedChunks.add(hash);
-                });
-            });
+            chunks.computeIfAbsent(hash, k -> new Chunk(k));
+            chunks.get(hash).load();
+            loadedChunks.add(hash);
         }
 
         // only unload chunks that are not in the new load set
@@ -236,10 +221,8 @@ class WebGL implements Clerk {
         unLoadChunks.removeAll(requiredChunks);
 
         for (Long hash : unLoadChunks) {
-            mainThreadTasks.add(() -> {
-                chunks.get(hash).unload();
-                loadedChunks.remove(hash);
-            });
+            chunks.get(hash).unload();
+            loadedChunks.remove(hash);
         }
     }
 
@@ -353,7 +336,7 @@ class WebGL implements Clerk {
     public BlockType getBlock(int x, int y, int z) {
         Chunk chunk = chunks.get(getChunkHash(x, z));
 
-        if (chunk == null)
+        if (chunk == null || y < 0 || y >= MAX_HEIGHT)
             return BlockType.AIR;
 
         int localX = Math.floorMod(x, CHUNK_SIZE);
@@ -429,8 +412,6 @@ class WebGL implements Clerk {
                             int globalZ = chunkCoords[1] * CHUNK_SIZE + k;
                             int globalY = j;
 
-                            // System.out.println("Block at: (" + globalX + ", " + globalY + ", " + globalZ + ")");
-
                             if (isVisible(globalX, globalY, globalZ)) {
                                 script.append("gl").append(ID).append(".addBlock(")
                                         .append(globalX).append(",").append(globalY).append(",").append(globalZ)
@@ -489,20 +470,14 @@ class WebGL implements Clerk {
         return new int[] { chunkX, chunkZ };
     }
 
-    // could extent if i add tranrparent blocks
+    // could extent if i add transparent blocks
     public boolean isVisible(int x, int y, int z) {
-        System.out.println("top" + getBlock(x, y + 1, z));
-        System.out.println("bottom" + getBlock(x, y - 1, z));
-        System.out.println("right" + getBlock(x + 1, y, z));
-        System.out.println("left" + getBlock(x - 1, y, z));
-        System.out.println("front" + getBlock(x, y, z + 1));
-        System.out.println("back" + getBlock(x, y, z - 1));
-        return getBlock(x, y + 1, z) == BlockType.AIR ||    // top
-                getBlock(x, y - 1, z) == BlockType.AIR ||   // bottom
-                getBlock(x + 1, y, z) == BlockType.AIR ||   // right
-                getBlock(x - 1, y, z) == BlockType.AIR ||   // left
-                getBlock(x, y, z + 1) == BlockType.AIR ||   // front
-                getBlock(x, y, z - 1) == BlockType.AIR;     // back
+        return getBlock(x, y + 1, z) == BlockType.AIR || // top
+                getBlock(x, y - 1, z) == BlockType.AIR || // bottom
+                getBlock(x + 1, y, z) == BlockType.AIR || // right
+                getBlock(x - 1, y, z) == BlockType.AIR || // left
+                getBlock(x, y, z + 1) == BlockType.AIR || // front
+                getBlock(x, y, z - 1) == BlockType.AIR; // back
     }
 
     // Generate height using Perlin noise
