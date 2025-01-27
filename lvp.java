@@ -271,6 +271,6 @@ interface Clerk {
 /open views/Input/Slider.java
 /open views/WebGL/BlockType.java
 /open views/WebGL/VectorUtils.java
-/open views/WebGL/WebGL.java
+/open views/WebGL/Game.java
 
 LiveView view = Clerk.view();

@@ -16,12 +16,12 @@ class WebGL {
             up: [0, 1, 0],
             right: [-1, 0, 0]
         };
+        this.UP_VEC = [0, 1, 0];
         this.blocksMap = new Map();
         this.textures = new Map(); // store the textures here
         this.setupShaders();
         this.setupGeometry();
         this.initializeBuffersAndProgram();
-        this.UP_VEC = [0, 1, 0];
         this.initializeMatrices();
         this.initializeTextures();
 
@@ -36,54 +36,86 @@ class WebGL {
         requestAnimationFrame(this.frame);
     }
 
-    initializeBuffersAndProgram() {
-        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES);
-        this.cubeIndices = createStaticIndexBuffer(this.gl, this.CUBE_INDICES);
-        if (!this.cubeVertices || !this.cubeIndices) {
-            console.error('Failed to create vertex or index buffers');
-        }
+    updateCamera(x, y, z, yawDegrees, pitchDegrees) {
+        // Update position
+        this.camera.position = [x, y, z];
 
-        this.crosshairBuffer = createStaticVertexBuffer(this.gl, this.CROSSHAIR_VERTICES);
-        if (!this.crosshairBuffer) {
-            console.error('Failed to create crosshair buffer');
-        }
+        // Convert degrees to radians
+        const yaw = glMatrix.toRadian(yawDegrees);
+        const pitch = glMatrix.toRadian(pitchDegrees);
 
-        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
-        if (!this.program) {
-            console.error('Failed to create WebGL program');
-        }
-        this.setupAttributesAndUniforms();
-        this.setupVAO();
+        // Calculate new front vector
+        this.camera.front = [
+            Math.cos(pitch) * Math.sin(yaw),
+            Math.sin(pitch),
+            Math.cos(pitch) * Math.cos(yaw)
+        ];
+        vec3.normalize(this.camera.front, this.camera.front);
+
+        // Calculate right and up vectors
+        vec3.cross(this.camera.right, this.camera.front, this.UP_VEC);
+        vec3.normalize(this.camera.right, this.camera.right);
+
+        vec3.cross(this.camera.up, this.camera.right, this.camera.front);
+        vec3.normalize(this.camera.up, this.camera.up);
     }
 
-    setupAttributesAndUniforms() {
-        const gl = this.gl;
-        this.attributes = {
-            position: gl.getAttribLocation(this.program, 'vertexPosition'),
-            color: gl.getAttribLocation(this.program, 'vertexColor'),
-            texCoord: gl.getAttribLocation(this.program, 'texCoord'),
-        };
+    addBlock(x, y, z, blockType) {
+        // Check if block already exists
+        const key = `${x},${y},${z}`;
+        if (this.blocksMap.has(key)) {
+            console.log(`Block already exists at (${x}, ${y}, ${z})`);
+            return;
+        }
 
-        this.uniforms = {
-            matWorld: gl.getUniformLocation(this.program, 'matWorld'),
-            matViewProj: gl.getUniformLocation(this.program, 'matViewProj'),
-            textureSampler: gl.getUniformLocation(this.program, 'textureSampler'),
-            useTexture: gl.getUniformLocation(this.program, 'useTexture'),
-        };
+        // add block
+        const shape = new Shape(
+            this.gl,                        // Added gl parameter
+            [x, y, z],                      // position
+            1.0,                            // scale
+            this.UP_VEC,                    // rotation axis
+            0,                              // rotation angle
+            this.cubeVao,                   // vertex array object
+            this.CUBE_INDICES.length,       // number of indices
+            this.textures.get(blockType)    // texture
+        );
+        this.blocksMap.set(key, shape);
     }
 
-    setupVAO() {
-        const gl = this.gl;
-        const stride = 8 * Float32Array.BYTES_PER_ELEMENT; // 3 pos + 3 color + 2 texture
-        this.cubeVao = createInterleavedVao(gl, this.cubeVertices, this.cubeIndices, [
-            { location: this.attributes.position, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 0 },
-            { location: this.attributes.color, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 3 * Float32Array.BYTES_PER_ELEMENT },
-            { location: this.attributes.texCoord, size: 2, type: gl.FLOAT, normalized: false, stride, offset: 6 * Float32Array.BYTES_PER_ELEMENT },
-        ]);
+    removeBlock(x, y, z) {
+        const key = `${x},${y},${z}`;
+        this.blocksMap.delete(key);
+    }
 
-        if (!this.cubeVao) {
-            console.error('Failed to create VAO');
+    removeBlocksInArea(xStart, xEnd, yStart, yEnd, zStart, zEnd) {
+        // Ensure the coordinates are sorted, so xStart is less than or equal to xEnd, and so on
+        const [xMin, xMax] = [Math.min(xStart, xEnd), Math.max(xStart, xEnd)];
+        const [yMin, yMax] = [Math.min(yStart, yEnd), Math.max(yStart, yEnd)];
+        const [zMin, zMax] = [Math.min(zStart, zEnd), Math.max(zStart, zEnd)];
+
+        for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+                for (let z = zMin; z <= zMax; z++) {
+                    this.removeBlock(x, y, z);
+                }
+            }
         }
+    }
+
+
+
+
+    resize() {
+        // Set CSS size
+        this.canvas.style.width = window.innerWidth + 'px';
+        this.canvas.style.height = window.innerHeight + 'px';
+
+        // Set buffer size accounting for high DPI displays
+        this.canvas.width = window.innerWidth * devicePixelRatio;
+        this.canvas.height = window.innerHeight * devicePixelRatio;
+
+        // Update WebGL viewport to match
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     }
 
     async loadTexture(name, imageUrl) {
@@ -149,10 +181,45 @@ class WebGL {
         }
     }
 
-    initializeMatrices() {
-        this.matView = mat4.create();
-        this.matProj = mat4.create();
-        this.matViewProj = mat4.create();
+    render() {
+        const gl = this.gl;
+
+        mat4.perspective(
+            this.matProj,
+            /* fovy= */ glMatrix.toRadian(90),
+            /* aspectRatio= */ this.canvas.width / this.canvas.height,
+            /* near, far= */ 0.1, 100.0
+        );
+
+        // Calculate lookAt point by adding front vector to position
+        const lookAtPoint = vec3.create();
+        vec3.add(lookAtPoint, this.camera.position, this.camera.front);
+
+        mat4.lookAt(
+            this.matView,
+            this.camera.position,
+            lookAtPoint,
+            this.camera.up
+        );
+
+        mat4.multiply(this.matViewProj, this.matProj, this.matView);
+
+        gl.clearColor(0.47, 0.65, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+        gl.useProgram(this.program);
+
+        gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
+
+        this.blocksMap.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
+
+        // Draw the crosshair (after other objects)
+        this.drawCrosshair();
     }
 
     setupShaders() {
@@ -287,124 +354,60 @@ class WebGL {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
-    resize() {
-        // Set CSS size
-        this.canvas.style.width = window.innerWidth + 'px';
-        this.canvas.style.height = window.innerHeight + 'px';
+    initializeBuffersAndProgram() {
+        this.cubeVertices = createStaticVertexBuffer(this.gl, this.CUBE_VERTICES);
+        this.cubeIndices = createStaticIndexBuffer(this.gl, this.CUBE_INDICES);
+        if (!this.cubeVertices || !this.cubeIndices) {
+            console.error('Failed to create vertex or index buffers');
+        }
 
-        // Set buffer size accounting for high DPI displays
-        this.canvas.width = window.innerWidth * devicePixelRatio;
-        this.canvas.height = window.innerHeight * devicePixelRatio;
+        this.crosshairBuffer = createStaticVertexBuffer(this.gl, this.CROSSHAIR_VERTICES);
+        if (!this.crosshairBuffer) {
+            console.error('Failed to create crosshair buffer');
+        }
 
-        // Update WebGL viewport to match
-        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        this.program = createProgram(this.gl, this.vertexShaderSourceCode, this.fragmentShaderSourceCode);
+        if (!this.program) {
+            console.error('Failed to create WebGL program');
+        }
+        this.setupAttributesAndUniforms();
+        this.setupVAO();
     }
 
-    render() {
+    setupAttributesAndUniforms() {
         const gl = this.gl;
+        this.attributes = {
+            position: gl.getAttribLocation(this.program, 'vertexPosition'),
+            color: gl.getAttribLocation(this.program, 'vertexColor'),
+            texCoord: gl.getAttribLocation(this.program, 'texCoord'),
+        };
 
-        mat4.perspective(
-            this.matProj,
-            /* fovy= */ glMatrix.toRadian(90),
-            /* aspectRatio= */ this.canvas.width / this.canvas.height,
-            /* near, far= */ 0.1, 100.0
-        );
-
-        // Calculate lookAt point by adding front vector to position
-        const lookAtPoint = vec3.create();
-        vec3.add(lookAtPoint, this.camera.position, this.camera.front);
-
-        mat4.lookAt(
-            this.matView,
-            /* pos= */ this.camera.position,
-            /* lookAt= */ lookAtPoint,
-            /* up= */ this.camera.up
-        );
-
-        mat4.multiply(this.matViewProj, this.matProj, this.matView);
-
-        gl.clearColor(0.47, 0.65, 1.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        gl.enable(gl.DEPTH_TEST);
-        gl.enable(gl.CULL_FACE);
-        gl.cullFace(gl.BACK);
-        gl.frontFace(gl.CCW);
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-
-        gl.useProgram(this.program);
-
-        gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
-
-        this.blocksMap.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
-
-        // Draw the crosshair (after other objects)
-        this.drawCrosshair();
+        this.uniforms = {
+            matWorld: gl.getUniformLocation(this.program, 'matWorld'),
+            matViewProj: gl.getUniformLocation(this.program, 'matViewProj'),
+            textureSampler: gl.getUniformLocation(this.program, 'textureSampler'),
+            useTexture: gl.getUniformLocation(this.program, 'useTexture'),
+        };
     }
 
-    updateCamera(x, y, z, yawDegrees, pitchDegrees) {
-        // Update position
-        this.camera.position = [x, y, z];
+    setupVAO() {
+        const gl = this.gl;
+        const stride = 8 * Float32Array.BYTES_PER_ELEMENT; // 3 pos + 3 color + 2 texture
+        this.cubeVao = createInterleavedVao(gl, this.cubeVertices, this.cubeIndices, [
+            { location: this.attributes.position, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 0 },
+            { location: this.attributes.color, size: 3, type: gl.FLOAT, normalized: false, stride, offset: 3 * Float32Array.BYTES_PER_ELEMENT },
+            { location: this.attributes.texCoord, size: 2, type: gl.FLOAT, normalized: false, stride, offset: 6 * Float32Array.BYTES_PER_ELEMENT },
+        ]);
 
-        // Convert degrees to radians
-        const yaw = glMatrix.toRadian(yawDegrees);
-        const pitch = glMatrix.toRadian(pitchDegrees);
-
-        // Calculate new front vector
-        this.camera.front = [
-            Math.cos(pitch) * Math.sin(yaw),
-            Math.sin(pitch),
-            Math.cos(pitch) * Math.cos(yaw)
-        ];
-        vec3.normalize(this.camera.front, this.camera.front);
-
-        // Calculate right and up vectors
-        vec3.cross(this.camera.right, this.camera.front, this.UP_VEC);
-        vec3.normalize(this.camera.right, this.camera.right);
-
-        vec3.cross(this.camera.up, this.camera.right, this.camera.front);
-        vec3.normalize(this.camera.up, this.camera.up);
-    }
-
-    addBlock(x, y, z, blockType) {
-        // Check if block already exists
-        const key = `${x},${y},${z}`;
-        if (this.blocksMap.has(key)) {
-            console.log(`Block already exists at (${x}, ${y}, ${z})`);
-            return;
+        if (!this.cubeVao) {
+            console.error('Failed to create VAO');
         }
-
-        // add block
-        const shape = new Shape(
-            this.gl,                        // Added gl parameter
-            [x, y, z],                      // position
-            1.0,                            // scale
-            this.UP_VEC,                    // rotation axis
-            0,                              // rotation angle
-            this.cubeVao,                   // vertex array object
-            this.CUBE_INDICES.length,       //number of indices
-            this.textures.get(blockType)    // texture
-        );
-        this.blocksMap.set(key, shape);
     }
 
-    removeBlock(x, y, z) {
-        const key = `${x},${y},${z}`;
-        this.blocksMap.delete(key);
-    }
-
-    removeBlocksInArea(xStart, xEnd, yStart, yEnd, zStart, zEnd) {
-        // Ensure the coordinates are sorted, so xStart is less than or equal to xEnd, and so on
-        const [xMin, xMax] = [Math.min(xStart, xEnd), Math.max(xStart, xEnd)];
-        const [yMin, yMax] = [Math.min(yStart, yEnd), Math.max(yStart, yEnd)];
-        const [zMin, zMax] = [Math.min(zStart, zEnd), Math.max(zStart, zEnd)];
-
-        for (let x = xMin; x <= xMax; x++) {
-            for (let y = yMin; y <= yMax; y++) {
-                for (let z = zMin; z <= zMax; z++) {
-                    this.removeBlock(x, y, z);
-                }
-            }
-        }
+    initializeMatrices() {
+        this.matView = mat4.create();
+        this.matProj = mat4.create();
+        this.matViewProj = mat4.create();
     }
 }
 
