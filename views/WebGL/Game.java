@@ -14,6 +14,7 @@ class Game implements Clerk {
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
+    private static BlockType selectedItem = BlockType.DIRT;
     private static final double MOUSE_SENSITIVITY = 0.4;
     private static final double MOVEMENT_SPEED = 0.5;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
@@ -517,7 +518,7 @@ class Game implements Clerk {
                 String parts = data.substring(data.indexOf("[") + 1, data.indexOf("]"));
 
                 // Split the string by commas, removing the quotes
-                handleKeyBoard(parts.replace("\"", "").split(","));
+                handleKeyboard(parts.replace("\"", "").split(","));
             }
         });
     }
@@ -537,12 +538,12 @@ class Game implements Clerk {
                         || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
                     break;
 
-                setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], BlockType.STONE);
+                setBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2], selectedItem);
                 break;
         }
     }
 
-    private void handleKeyBoard(String[] keys) {
+    private void handleKeyboard(String[] keys) {
         // Calculate right vector
         double[] worldUp = { 0, 1, 0 };
         double[] rightVector = VectorUtils.crossProduct(frontVector, worldUp);
@@ -584,6 +585,15 @@ class Game implements Clerk {
                     break;
                 case "c":
                     cameraPos[1] -= MOVEMENT_SPEED;
+                    break;
+                case "1":
+                    selectedItem = BlockType.fromId(1);
+                    break;
+                case "2":
+                    selectedItem = BlockType.fromId(2);
+                    break;
+                case "3":
+                    selectedItem = BlockType.fromId(3);
                     break;
             }
         }
