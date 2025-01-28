@@ -35,7 +35,7 @@ class WebGL {
         // start the render loop
         requestAnimationFrame(this.frame);
     }
-
+    // udpate camera
     updateCamera(x, y, z, yawDegrees, pitchDegrees) {
         // Update position
         this.camera.position = [x, y, z];
@@ -59,7 +59,9 @@ class WebGL {
         vec3.cross(this.camera.up, this.camera.right, this.camera.front);
         vec3.normalize(this.camera.up, this.camera.up);
     }
+    // udpate camera
 
+    // basics
     addBlock(x, y, z, blockType) {
         // Check if block already exists
         const key = `${x},${y},${z}`;
@@ -101,6 +103,7 @@ class WebGL {
             }
         }
     }
+    // basics
 
 
 

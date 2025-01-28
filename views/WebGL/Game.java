@@ -27,10 +27,12 @@ class Game implements Clerk {
     private static final double CAMERA_HEIGHT = 1.62;
     // collision
 
-    public double gravityVelocity = 0;
+    // gravity
+    private double gravityVelocity = 0;
     private static final double GRAVITY = 0.04;
     private static final double TERMINAL_VELOCITY = 1.0;
     private static final double JUMP_FORCE = 0.35;
+    // gravity
 
     // rate limiter
     private static final long UPDATE_INTERVAL_MS = 64; // Limit updates to ~60fps (16ms interval)
@@ -43,7 +45,7 @@ class Game implements Clerk {
     private static final int MAX_HEIGHT = 256;
     private static final int RENDER_DISTANCE = 1; // Number of chunks to render in each direction
     private long currentChunkHash;
-    public Map<Long, Chunk> chunks; // private
+    private Map<Long, Chunk> chunks; // private
     private Set<Long> loadedChunks = new HashSet<>();
     // chunks
 
@@ -51,6 +53,7 @@ class Game implements Clerk {
     private final Noise terrainNoise = new Noise(12345);
     // Random world generation
 
+    // initialize webgl
     public Game(LiveView view) {
         this.view = view;
         ID = Clerk.getHashID(this);
@@ -63,7 +66,6 @@ class Game implements Clerk {
         this(Clerk.view());
     }
 
-    // initialize webgl
     private void initializeWebGL() {
         Clerk.load(view, "views/WebGL/handleMnKEvent.js");
         Clerk.load(view, "views/WebGL/webGL.js");
@@ -71,7 +73,7 @@ class Game implements Clerk {
         Clerk.script(view, "const gl" + ID + " = new WebGL(document.getElementById('WebGLCanvas" + ID + "'));");
     }
 
-    public void handleTexturesLoad() {
+    private void handleTexturesLoad() {
         view.createResponseContext("/texturesload", (data) -> {
             handleChunkRendering();
             handleMouseMove();
@@ -81,7 +83,8 @@ class Game implements Clerk {
     }
     // initialize webgl
 
-    public void updateCamera() {
+    // udpate camera
+    private void updateCamera() {
         // rate limiter
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastUpdateTimeUpdate < UPDATE_INTERVAL_MS) {
@@ -95,7 +98,9 @@ class Game implements Clerk {
                         + ","
                         + yaw + "," + pitch + ");");
     }
+    // udpate camera
 
+    // basics
     public double[] getPlayerPos() {
         return playerPos;
     }
@@ -141,27 +146,28 @@ class Game implements Clerk {
         setBlock((int) Math.floor(playerPos[0]), (int) Math.floor(playerPos[1]), (int) Math.floor(playerPos[2]),
                 blockType);
     }
+    // basics
 
     // chunkutil
     // Hash utility
-    public static long getChunkHash(int x, int z) {
+    private static long getChunkHash(int x, int z) {
         int chunkX = Math.floorDiv(x, CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, CHUNK_SIZE);
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
     }
 
-    public static int[] hashToChunkCoord(long hash) {
+    private static int[] hashToChunkCoord(long hash) {
         int chunkX = (int) (hash >> 32);
         int chunkZ = (int) hash;
         return new int[] { chunkX, chunkZ };
     }
 
     // Return the chunk hash the player is in
-    public long playerChunk() {
+    private long playerChunk() {
         return getChunkHash((int) Math.floor(playerPos[0]), (int) Math.floor(playerPos[2]));
     }
 
-    public void handleChunkRendering() {
+    private void handleChunkRendering() {
         // Update current chunk based on new player position
         currentChunkHash = playerChunk();
 
@@ -229,9 +235,9 @@ class Game implements Clerk {
 
     // chunks
     class Chunk {
-        public BlockType[][][] blocks; // private
-        public long hash; // private
-        public int x, z;
+        private BlockType[][][] blocks;
+        private long hash;
+        private int x, z;
 
         // random generate new chunk
         public Chunk(long hash) {
@@ -349,7 +355,7 @@ class Game implements Clerk {
     // visibility
     // could extend if i add transparent blocks
     // check if specifyed block should be visible for performance reasons
-    public boolean isVisible(int x, int y, int z) {
+    private boolean isVisible(int x, int y, int z) {
         boolean top = getBlock(x, y + 1, z) == BlockType.AIR;
         boolean btm = getBlock(x, y - 1, z) == BlockType.AIR;
         boolean rgt = chunks.get(getChunkHash(x + 1, z)) == null || getBlock(x + 1, y, z) == BlockType.AIR;
@@ -359,7 +365,7 @@ class Game implements Clerk {
         return top || btm || rgt || lft || frt || bck;
     }
 
-    public void areaReload(int x, int y, int z, int range) {
+    private void areaReload(int x, int y, int z, int range) {
         // if chunk is not loaded area should not reload
         if (!loadedChunks.contains(getChunkHash(x, z)))
             return;
@@ -513,7 +519,7 @@ class Game implements Clerk {
     // Random world generation
 
     // mouseEvent
-    public void handleMouseMove() {
+    private void handleMouseMove() {
         view.createResponseContext("/mouseevent", (data) -> {
             // Parse the incoming JSON data
             String[] parts = data.replaceAll("[^0-9.,-]", "").split(",");
@@ -545,7 +551,7 @@ class Game implements Clerk {
     // mouseEvent
 
     // clickEvent
-    public void handleClickEvent() {
+    private void handleClickEvent() {
         view.createResponseContext("/keyevent", (data) -> {
             if (data.contains("mouseDown")) {
                 // Parse the incoming JSON data
@@ -657,6 +663,7 @@ class Game implements Clerk {
     }
     // clickEvent
 
+    // gravity
     private void startGameLoop() {
         while (true) {
             applyGravity();
@@ -685,11 +692,12 @@ class Game implements Clerk {
         updateCamera();
     }
 
-    public boolean isPlayerOnGround() {
+    private boolean isPlayerOnGround() {
         double[] testPos = playerPos.clone();
         testPos[1] -= 0.01; // Slight offset to check collision below
         return checkCollision(testPos);
     }
+    // gravity
 
     // collision
     private boolean checkCollision(double[] newPos) {
