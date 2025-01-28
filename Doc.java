@@ -71,18 +71,22 @@ Clerk.markdown(
         ```
 
         ## Szenario 4 Welt in chunks teilen
+        Jeder Chunk ist 16x64x16 Blöcke groß. Die Blöcke der Chunks sind zwar permanent für java einzusehen,
+        die Blöcke werden aber erst wenn der Spieler in die Nähe kommt an den WebGL java script teil geschickt der sie für den Benutzer sichtbar macht, um Performance zu steigern.
+        Falls der chunks noch nicht in Java existiert wird er mit einem zufälligen terrain generiert aber dazu in Szenario 5 zufällige Weltgeneration mehr.
+        Die load Methode sendet alle zu ladenden Blöcke an den WebGL teil.
+        Die unload als gegenstück zur load sendet alle zu entfernenden Blöcke an den WebGL teil.
         ```java
         ${chunks}
         ```
 
+        Alle Chunks werden in einer Hashmap gespeichert und als key wird ein Hash aus der Position des Chunks berechnet.
+        Die handleChunkRendering Methode erstellt und updated Sets von geladenen, zu ladende und zu entladenden Chunks und lässt diese auch immer laden oder entladen.
+        (auf den Part mit dem neuladen der Chunkränder gehe ich in Szenario 3 performantes Rendering noch ein).
         ```java
         ${chunkutil}
         ```
 
-
-
-        ich gehe davon aus dass es in diesem Projekt hauptsächlich um den java code
-        geht in dem ich auch dis logik umgesetzt habe daher bin ich recht wenig auf den js code eingegangen.
         """, Map.of(
             "initWebgl", Text.cutOut("./views/WebGL/Game.java", "// initialize webgl"),
             "BlockType", Text.cutOut("./views/WebGL/BlockType.java", "// BlockType"),
@@ -94,6 +98,47 @@ Clerk.markdown(
             "collision", Text.cutOut("./views/WebGL/Game.java", "// collision"),
             "chunks", Text.cutOut("./views/WebGL/Game.java", "// chunks"),
             "chunkutil", Text.cutOut("./views/WebGL/Game.java", "// chunkutil")
+        )
+    )
+);
+
+Clerk.markdown(
+    Text.fillOut(
+        """
+        ## Szenario 3 performantes Rendering
+        Aus Performanz gründen werden nur die Blöcke geladen die tatsächlich sichtbar sind.
+        Blöcke die nicht geladen werden haben keine Seite, die mit Luft in Kontakt ist das ist anders als im Funktionsversprechen nicht mit einer Voxel grid.
+        Die areaReload Methode wird benutzt um neu zu berechnen welche Blöcke in einem Bereich sichtbar sind zum Beispiel wenn Blöcke plaziert oder abgebaut werden.
+        Die reloadChunkEdge Methode ist recht spezifisch da Blöcke an rändern von Chunks nur sichtbar sind wenn der anliegende Chunk noch nicht existiert
+        diese seite soll neu geprüft werden, wenn ein chunks an seiner seite neu geladen wird.
+        ```java
+        ${visibility}
+        ```
+
+        ## Szenario 5 zufällige Weltgeneration
+        Die Zufällige Weltgenerierung basiert auf der Perlin Noise Funktion dadurch wird die Höhe der Map an jeder x-y Position ermittelt.
+        Die PERMUTATION_SIZE wird verwendet um koordinaten eine Höhe zu zuweisen.
+        Die Fade, Lerp und Grad Methode rundet die Welt ab.
+        Wenn der seed nich zur ersellung der Noise nicht geändert wird, wird die Welt auch wieder gleich generiert.
+        ```java
+        ${worldGen}
+        ```
+
+        Beim Generieren eines neuen Chunks wird die höhe für jede x-y position mit der generateHeight Methode ermittelt.
+        Der oberste Block wird mit Grass belegt, die 3 Blöcke darunter mit Erde und der Rest mit Stein.
+        ```java
+        ${chunkGen}
+        ```
+
+        ## Funktionen Über das Funktionsversprechen hinaus
+        Kollisionen habe ich bereits in Szenario 2 Steuerung dokumentiert.
+
+        ich gehe davon aus dass es in diesem Projekt hauptsächlich um den java code
+        geht in dem ich auch dis logik umgesetzt habe daher bin ich recht wenig auf den js code eingegangen.
+        """, Map.of(
+            "visibility", Text.cutOut("./views/WebGL/Game.java", "// visibility"),
+            "worldGen", Text.cutOut("./views/WebGL/Game.java", "// Random world generation"),
+            "chunkGen", Text.cutOut("./views/WebGL/Game.java", "// random generate new chunk")
         )
     )
 );

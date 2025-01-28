@@ -10,7 +10,7 @@ class Game implements Clerk {
     LiveView view;
 
     // Player movement
-    private double[] playerPos = { 0, 10, 0 }; // x, y, z center of collisionbox bottom
+    private double[] playerPos = { 0, 100, 0 }; // x, y, z center of collisionbox bottom
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
@@ -40,7 +40,7 @@ class Game implements Clerk {
 
     // chunks
     private static final int CHUNK_SIZE = 16;
-    private static final int MAX_HEIGHT = 64;
+    private static final int MAX_HEIGHT = 256;
     private static final int RENDER_DISTANCE = 1; // Number of chunks to render in each direction
     private long currentChunkHash;
     public Map<Long, Chunk> chunks; // private
@@ -49,6 +49,7 @@ class Game implements Clerk {
 
     // Random world generation
     private final Noise terrainNoise = new Noise(12345);
+    // Random world generation
 
     public Game(LiveView view) {
         this.view = view;
@@ -141,7 +142,7 @@ class Game implements Clerk {
                 blockType);
     }
 
-    // chunks
+    // chunkutil
     // Hash utility
     public static long getChunkHash(int x, int z) {
         int chunkX = Math.floorDiv(x, CHUNK_SIZE);
@@ -158,40 +159,6 @@ class Game implements Clerk {
     // Return the chunk hash the player is in
     public long playerChunk() {
         return getChunkHash((int) Math.floor(playerPos[0]), (int) Math.floor(playerPos[2]));
-    }
-
-    // could extend if i add transparent blocks
-    // check if specifyed block should be visible for performance reasons
-    public boolean isVisible(int x, int y, int z) {
-        boolean top = getBlock(x, y + 1, z) == BlockType.AIR;
-        boolean btm = getBlock(x, y - 1, z) == BlockType.AIR;
-        boolean rgt = chunks.get(getChunkHash(x + 1, z)) == null || getBlock(x + 1, y, z) == BlockType.AIR;
-        boolean lft = chunks.get(getChunkHash(x - 1, z)) == null || getBlock(x - 1, y, z) == BlockType.AIR;
-        boolean frt = chunks.get(getChunkHash(x, z + 1)) == null || getBlock(x, y, z + 1) == BlockType.AIR;
-        boolean bck = chunks.get(getChunkHash(x, z - 1)) == null || getBlock(x, y, z - 1) == BlockType.AIR;
-        return top || btm || rgt || lft || frt || bck;
-    }
-
-    public void areaReload(int x, int y, int z, int range) {
-        // if chunk is not loaded area should not reload
-        if (!loadedChunks.contains(getChunkHash(x, z)))
-            return;
-        String unloadCall = "gl" + ID + ".removeBlocksInArea(" + (x - range) + "," + (x + range) + "," + (y - range)
-                + "," + (y + range) + "," + (z - range) + "," + (z + range) + ");";
-        StringBuilder loadCall = new StringBuilder();
-        for (int i = (x - range); i <= (x + range); i++) {
-            for (int j = (y - range); j <= (y + range); j++) {
-                for (int k = (z - range); k <= (z + range); k++) {
-                    if (getBlock(i, j, k) != BlockType.AIR && isVisible(i, j, k)) {
-                        loadCall.append("gl").append(ID).append(".addBlock(")
-                                .append(i).append(",").append(j).append(",").append(k)
-                                .append(",").append(getBlock(i, j, k).getId()).append(");");
-                    }
-                }
-            }
-        }
-        Clerk.call(view, unloadCall.toString());
-        Clerk.call(view, loadCall.toString());
     }
 
     public void handleChunkRendering() {
@@ -258,66 +225,9 @@ class Game implements Clerk {
             loadedChunks.remove(hash);
         }
     }
+    // chunkutil
 
-    private void reloadChunkEdge(long chunkHash, String direction) {
-        Chunk chunk = chunks.get(chunkHash);
-        if (chunk == null)
-            return;
-
-        int chunkX = hashToChunkCoord(chunkHash)[0];
-        int chunkZ = hashToChunkCoord(chunkHash)[1];
-
-        int xStart, xEnd, zStart, zEnd;
-        switch (direction) {
-            case "WEST":
-                xStart = chunkX * CHUNK_SIZE;
-                xEnd = xStart;
-                zStart = chunkZ * CHUNK_SIZE;
-                zEnd = chunkZ * CHUNK_SIZE + CHUNK_SIZE - 1;
-                break;
-            case "EAST":
-                xStart = chunkX * CHUNK_SIZE + CHUNK_SIZE - 1;
-                xEnd = xStart;
-                zStart = chunkZ * CHUNK_SIZE;
-                zEnd = zStart + CHUNK_SIZE - 1;
-                break;
-            case "NORTH":
-                xStart = chunkX * CHUNK_SIZE;
-                xEnd = xStart + CHUNK_SIZE - 1;
-                zStart = chunkZ * CHUNK_SIZE;
-                zEnd = zStart;
-                break;
-            case "SOUTH":
-                xStart = chunkX * CHUNK_SIZE;
-                xEnd = xStart + CHUNK_SIZE - 1;
-                zStart = chunkZ * CHUNK_SIZE + CHUNK_SIZE - 1;
-                zEnd = zStart;
-                break;
-            default:
-                return;
-        }
-
-        String unloadCall = "gl" + ID + ".removeBlocksInArea(" + xStart + "," + xEnd + ",0," + (MAX_HEIGHT - 1) + ","
-                + zStart + "," + zEnd + ");";
-
-        StringBuilder loadCall = new StringBuilder();
-        for (int x = xStart; x <= xEnd; x++) {
-            for (int z = zStart; z <= zEnd; z++) {
-                for (int y = 0; y < MAX_HEIGHT; y++) {
-                    BlockType block = getBlock(x, y, z);
-                    if (block != BlockType.AIR && isVisible(x, y, z)) {
-                        loadCall.append("gl").append(ID).append(".addBlock(")
-                                .append(x).append(",").append(y).append(",").append(z)
-                                .append(",").append(block.getId()).append(");");
-                    }
-                }
-            }
-        }
-
-        Clerk.call(view, unloadCall);
-        Clerk.call(view, loadCall.toString());
-    }
-
+    // chunks
     class Chunk {
         public BlockType[][][] blocks; // private
         public long hash; // private
@@ -352,6 +262,7 @@ class Game implements Clerk {
                 }
             }
         }
+        // random generate new chunk
 
         public BlockType getBlock(int x, int y, int z) {
             return blocks[x][y][z];
@@ -435,12 +346,108 @@ class Game implements Clerk {
     }
     // chunks
 
+    // visibility
+    // could extend if i add transparent blocks
+    // check if specifyed block should be visible for performance reasons
+    public boolean isVisible(int x, int y, int z) {
+        boolean top = getBlock(x, y + 1, z) == BlockType.AIR;
+        boolean btm = getBlock(x, y - 1, z) == BlockType.AIR;
+        boolean rgt = chunks.get(getChunkHash(x + 1, z)) == null || getBlock(x + 1, y, z) == BlockType.AIR;
+        boolean lft = chunks.get(getChunkHash(x - 1, z)) == null || getBlock(x - 1, y, z) == BlockType.AIR;
+        boolean frt = chunks.get(getChunkHash(x, z + 1)) == null || getBlock(x, y, z + 1) == BlockType.AIR;
+        boolean bck = chunks.get(getChunkHash(x, z - 1)) == null || getBlock(x, y, z - 1) == BlockType.AIR;
+        return top || btm || rgt || lft || frt || bck;
+    }
+
+    public void areaReload(int x, int y, int z, int range) {
+        // if chunk is not loaded area should not reload
+        if (!loadedChunks.contains(getChunkHash(x, z)))
+            return;
+        String unloadCall = "gl" + ID + ".removeBlocksInArea(" + (x - range) + "," + (x + range) + "," + (y - range)
+                + "," + (y + range) + "," + (z - range) + "," + (z + range) + ");";
+        StringBuilder loadCall = new StringBuilder();
+        for (int i = (x - range); i <= (x + range); i++) {
+            for (int j = (y - range); j <= (y + range); j++) {
+                for (int k = (z - range); k <= (z + range); k++) {
+                    if (getBlock(i, j, k) != BlockType.AIR && isVisible(i, j, k)) {
+                        loadCall.append("gl").append(ID).append(".addBlock(")
+                                .append(i).append(",").append(j).append(",").append(k)
+                                .append(",").append(getBlock(i, j, k).getId()).append(");");
+                    }
+                }
+            }
+        }
+        Clerk.call(view, unloadCall.toString());
+        Clerk.call(view, loadCall.toString());
+    }
+
+    private void reloadChunkEdge(long chunkHash, String direction) {
+        Chunk chunk = chunks.get(chunkHash);
+        if (chunk == null)
+            return;
+
+        int chunkX = hashToChunkCoord(chunkHash)[0];
+        int chunkZ = hashToChunkCoord(chunkHash)[1];
+
+        int xStart, xEnd, zStart, zEnd;
+        switch (direction) {
+            case "WEST":
+                xStart = chunkX * CHUNK_SIZE;
+                xEnd = xStart;
+                zStart = chunkZ * CHUNK_SIZE;
+                zEnd = chunkZ * CHUNK_SIZE + CHUNK_SIZE - 1;
+                break;
+            case "EAST":
+                xStart = chunkX * CHUNK_SIZE + CHUNK_SIZE - 1;
+                xEnd = xStart;
+                zStart = chunkZ * CHUNK_SIZE;
+                zEnd = zStart + CHUNK_SIZE - 1;
+                break;
+            case "NORTH":
+                xStart = chunkX * CHUNK_SIZE;
+                xEnd = xStart + CHUNK_SIZE - 1;
+                zStart = chunkZ * CHUNK_SIZE;
+                zEnd = zStart;
+                break;
+            case "SOUTH":
+                xStart = chunkX * CHUNK_SIZE;
+                xEnd = xStart + CHUNK_SIZE - 1;
+                zStart = chunkZ * CHUNK_SIZE + CHUNK_SIZE - 1;
+                zEnd = zStart;
+                break;
+            default:
+                return;
+        }
+
+        String unloadCall = "gl" + ID + ".removeBlocksInArea(" + xStart + "," + xEnd + ",0," + (MAX_HEIGHT - 1) + ","
+                + zStart + "," + zEnd + ");";
+
+        StringBuilder loadCall = new StringBuilder();
+        for (int x = xStart; x <= xEnd; x++) {
+            for (int z = zStart; z <= zEnd; z++) {
+                for (int y = 0; y < MAX_HEIGHT; y++) {
+                    BlockType block = getBlock(x, y, z);
+                    if (block != BlockType.AIR && isVisible(x, y, z)) {
+                        loadCall.append("gl").append(ID).append(".addBlock(")
+                                .append(x).append(",").append(y).append(",").append(z)
+                                .append(",").append(block.getId()).append(");");
+                    }
+                }
+            }
+        }
+
+        Clerk.call(view, unloadCall);
+        Clerk.call(view, loadCall.toString());
+    }
+    // visibility
+
+    // Random world generation
     // Generate height using Perlin noise
     private int generateHeight(int globalX, int globalZ) {
         double scale = 0.05;
         double noiseValue = terrainNoise.noise(globalX * scale, 0, globalZ * scale);
-        int baseHeight = 8;
-        int heightRange = 4;
+        int baseHeight = 64;
+        int heightRange = 8;
         return (int) (noiseValue * heightRange + baseHeight);
     }
 
@@ -503,6 +510,7 @@ class Game implements Clerk {
                                     grad(perm[BB + 1], x - 1, y - 1, z - 1))));
         }
     }
+    // Random world generation
 
     // mouseEvent
     public void handleMouseMove() {
