@@ -3,8 +3,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Random;
-import java.util.Timer;
-import java.util.TimerTask;
 
 class Game implements Clerk {
     // LiveView
@@ -41,7 +39,7 @@ class Game implements Clerk {
     // World
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 64;
-    private static final int RENDER_DISTANCE = 2; // Number of chunks to render in each direction
+    private static final int RENDER_DISTANCE = 1; // Number of chunks to render in each direction
     private long currentChunkHash;
     public Map<Long, Chunk> chunks; // private
     private Set<Long> loadedChunks = new HashSet<>();
