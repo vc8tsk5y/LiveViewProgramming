@@ -3,25 +3,40 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 
 class Game implements Clerk {
     // LiveView
     final String ID;
     LiveView view;
 
-    // Player movement state
-    private double[] cameraPos = { 0, 10, 0 }; // x, y, z
+    // Player movement
+    private double[] playerPos = { 0, 10, 0 }; // x, y, z center of collisionbox bottom
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
-    private static BlockType selectedItem = BlockType.DIRT;
-    private static final double MOUSE_SENSITIVITY = 0.4;
-    private static final double MOVEMENT_SPEED = 0.5;
+
+    private static final double COLLISION_HEIGHT = 1.8;
+    private static final double COLLISION_WIDTH = 0.6;
+    private static final double CAMERA_HEIGHT = 1.62;
+
+    private Set<String> activeKeys = new HashSet<>();
+    private BlockType selectedItem = BlockType.DIRT;
+    public double mouseSensitivity = 0.02;
+    private static final double MOVEMENT_SPEED = 0.1439;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
 
+    public double gravityVelocity = 0;
+    private static final double GRAVITY = 0.04;
+    private static final double TERMINAL_VELOCITY = 1.0;
+    private static final double JUMP_FORCE = 0.35;
+
     // rate limiter
-    private static final long UPDATE_INTERVAL_MS = 16; // Limit updates to ~60fps (16ms interval)
-    private long lastUpdateTimestamp = 0;
+    private static final long UPDATE_INTERVAL_MS = 64; // Limit updates to ~60fps (16ms interval)
+    private long lastUpdateTimeUpdate = 0;
+    private long lastUpdateTimeKey = 0;
+    private long lastUpdateTimeGravity = 0;
 
     // World
     private static final int CHUNK_SIZE = 16;
@@ -40,8 +55,6 @@ class Game implements Clerk {
         chunks = new ConcurrentHashMap<>();
         initializeWebGL();
         handleTexturesLoad();
-        handleMouseMove();
-        handleClickEvent();
     }
 
     public Game() {
@@ -58,26 +71,35 @@ class Game implements Clerk {
     public void handleTexturesLoad() {
         view.createResponseContext("/texturesload", (data) -> {
             handleChunkRendering();
+            handleMouseMove();
+            handleClickEvent();
+            startGameLoop(); // Start the gravity update loop
         });
     }
 
     public void updateCamera() {
         // rate limiter
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastUpdateTimestamp < UPDATE_INTERVAL_MS) {
+        if (currentTime - lastUpdateTimeUpdate < UPDATE_INTERVAL_MS) {
             return;
         }
-        lastUpdateTimestamp = currentTime;
+        lastUpdateTimeUpdate = currentTime;
 
         // updateCamera
-        Clerk.call(view, "gl" + ID + ".updateCamera(" + cameraPos[0] + "," + cameraPos[1] + "," + cameraPos[2] + ","
-                + yaw + "," + pitch + ");");
+        Clerk.call(view,
+                "gl" + ID + ".updateCamera(" + playerPos[0] + "," + (playerPos[1] + CAMERA_HEIGHT) + "," + playerPos[2]
+                        + ","
+                        + yaw + "," + pitch + ");");
     }
 
-    public void tp(double x, double y, double z) {
-        cameraPos[0] = x;
-        cameraPos[1] = y;
-        cameraPos[2] = z;
+    public double[] getPlayerPos() {
+        return playerPos;
+    }
+
+    public void setPlayerPos(double x, double y, double z) {
+        playerPos[0] = x;
+        playerPos[1] = y;
+        playerPos[2] = z;
         updateCamera();
     }
 
@@ -110,9 +132,10 @@ class Game implements Clerk {
         areaReload(x, y, z, 1);
     }
 
-    // set block at camera position
+    // set block at player position
     public void setBlock(BlockType blockType) {
-        setBlock((int) cameraPos[0], (int) cameraPos[1], (int) cameraPos[2], blockType);
+        setBlock((int) Math.floor(playerPos[0]), (int) Math.floor(playerPos[1]), (int) Math.floor(playerPos[2]),
+                blockType);
     }
 
     // Hash utility
@@ -130,7 +153,7 @@ class Game implements Clerk {
 
     // Return the chunk hash the player is in
     public long playerChunk() {
-        return getChunkHash((int) cameraPos[0], (int) cameraPos[2]);
+        return getChunkHash((int) Math.floor(playerPos[0]), (int) Math.floor(playerPos[2]));
     }
 
     // could extend if i add transparent blocks
@@ -168,7 +191,7 @@ class Game implements Clerk {
     }
 
     public void handleChunkRendering() {
-        // Update current chunk based on new camera position
+        // Update current chunk based on new player position
         currentChunkHash = playerChunk();
 
         // Load/unload chunks around player
@@ -485,8 +508,8 @@ class Game implements Clerk {
             double mouseY = Double.parseDouble(parts[1]);
 
             // Update yaw and pitch
-            yaw -= mouseX * MOUSE_SENSITIVITY;
-            pitch -= mouseY * MOUSE_SENSITIVITY;
+            yaw -= mouseX * mouseSensitivity;
+            pitch -= mouseY * mouseSensitivity;
 
             // Clamp pitch to prevent flipping
             pitch = Math.max(-89.9, Math.min(89.9, pitch));
@@ -510,15 +533,20 @@ class Game implements Clerk {
         view.createResponseContext("/keyevent", (data) -> {
             if (data.contains("mouseDown")) {
                 // Parse the incoming JSON data
-                // remove all non-numeric characters
                 handleMouseClick(Integer.parseInt(data.replaceAll("[^0-9]", "")));
-            } else if (data.contains("keys")) {
+            } else if (data.contains("keyDown")) {
                 // Parse the incoming JSON data
-                // Extract the part between the square brackets
-                String parts = data.substring(data.indexOf("[") + 1, data.indexOf("]"));
-
-                // Split the string by commas, removing the quotes
-                handleKeyboard(parts.replace("\"", "").split(","));
+                String part = data.split(":")[1];
+                String keyDown = part.replaceAll("[^a-zA-Z0-9 ,]", "");
+                activeKeys.add(keyDown);
+            } else if (data.contains("keyUp")) {
+                // Parse the incoming JSON data
+                String part = data.split(":")[1];
+                String keyUp = part.replaceAll("[^a-zA-Z0-9 ,]", "");
+                activeKeys.remove(keyUp);
+            }
+            while (!activeKeys.isEmpty()) {
+                handleKeyboard();
             }
         });
     }
@@ -526,14 +554,18 @@ class Game implements Clerk {
     private void handleMouseClick(int button) {
         switch (button) {
             case 0: // Left click - Break block
-                int[] targetBlock = raycastBlock(false);
+                int[] targetBlock = raycastBlock(
+                        new double[] { playerPos[0], playerPos[1] + CAMERA_HEIGHT, playerPos[2] }, frontVector,
+                        MAX_REACH, false);
                 if (targetBlock == null)
                     break;
 
                 setBlock(targetBlock[0], targetBlock[1], targetBlock[2], BlockType.AIR);
                 break;
             case 2: // Right click - Place block
-                int[] adjacentBlock = raycastBlock(true);
+                int[] adjacentBlock = raycastBlock(
+                        new double[] { playerPos[0], playerPos[1] + CAMERA_HEIGHT, playerPos[2] }, frontVector,
+                        MAX_REACH, true);
                 if (adjacentBlock == null
                         || getBlock(adjacentBlock[0], adjacentBlock[1], adjacentBlock[2]) != BlockType.AIR)
                     break;
@@ -543,48 +575,46 @@ class Game implements Clerk {
         }
     }
 
-    private void handleKeyboard(String[] keys) {
+    private void handleKeyboard() {
+        // rate limiter
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastUpdateTimeKey < UPDATE_INTERVAL_MS) {
+            return;
+        }
+        lastUpdateTimeKey = currentTime;
+
         // Calculate right vector
         double[] worldUp = { 0, 1, 0 };
         double[] rightVector = VectorUtils.crossProduct(frontVector, worldUp);
 
         // Handle movement
-        for (String key : keys) {
+        for (String key : activeKeys) {
             double[] movementVec = new double[3];
             switch (key.toLowerCase()) {
                 case "w": // Forward
                     movementVec[0] += frontVector[0] * MOVEMENT_SPEED;
                     movementVec[2] += frontVector[2] * MOVEMENT_SPEED;
-                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                            MOVEMENT_SPEED);
-                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
                     break;
                 case "r": // Backward
                     movementVec[0] -= frontVector[0] * MOVEMENT_SPEED;
                     movementVec[2] -= frontVector[2] * MOVEMENT_SPEED;
-                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                            MOVEMENT_SPEED);
-                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
                     break;
                 case "a": // Strafe left
                     movementVec[0] -= rightVector[0] * MOVEMENT_SPEED;
                     movementVec[2] -= rightVector[2] * MOVEMENT_SPEED;
-                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                            MOVEMENT_SPEED);
-                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
                     break;
                 case "s": // Strafe right
                     movementVec[0] += rightVector[0] * MOVEMENT_SPEED;
                     movementVec[2] += rightVector[2] * MOVEMENT_SPEED;
-                    movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec),
-                            MOVEMENT_SPEED);
-                    cameraPos = VectorUtils.vecAddition(cameraPos, movementVec);
                     break;
                 case " ": // Space bar
-                    cameraPos[1] += MOVEMENT_SPEED;
+                    if (isPlayerOnGround()) {
+                        gravityVelocity = JUMP_FORCE;
+                    }
                     break;
+                // remove this
                 case "c":
-                    cameraPos[1] -= MOVEMENT_SPEED;
+                    movementVec[1] -= MOVEMENT_SPEED;
                     break;
                 case "1":
                     selectedItem = BlockType.fromId(1);
@@ -596,6 +626,13 @@ class Game implements Clerk {
                     selectedItem = BlockType.fromId(3);
                     break;
             }
+            if (VectorUtils.vecLength(movementVec) > 0) {
+                movementVec = VectorUtils.vecMultiplication(VectorUtils.normalize(movementVec), MOVEMENT_SPEED);
+
+                // Adjust for collisions
+                double[] adjustedMovement = adjustMovementForCollision(movementVec);
+                playerPos = VectorUtils.vecAddition(playerPos, adjustedMovement);
+            }
         }
         updateCamera();
         if (currentChunkHash != playerChunk()) {
@@ -603,12 +640,102 @@ class Game implements Clerk {
         }
     }
 
+    private void startGameLoop() {
+        while (true) {
+            applyGravity();
+        }
+    }
+
+    private void applyGravity() {
+        // rate limiter
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastUpdateTimeGravity < UPDATE_INTERVAL_MS) {
+            return;
+        }
+        lastUpdateTimeGravity = currentTime;
+
+        gravityVelocity -= GRAVITY;
+        gravityVelocity = Math.max(gravityVelocity, -TERMINAL_VELOCITY);
+
+        double[] movement = { 0, gravityVelocity, 0 };
+        double[] adjusted = adjustMovementForCollision(movement);
+        playerPos[1] += adjusted[1];
+
+        if (isPlayerOnGround()) {
+            gravityVelocity = 0;
+        }
+
+        updateCamera();
+    }
+
+    public boolean isPlayerOnGround() {
+        double[] testPos = playerPos.clone();
+        testPos[1] -= 0.01; // Slight offset to check collision below
+        return checkCollision(testPos);
+    }
+
+    private boolean checkCollision(double[] newPos) {
+        double halfWidth = COLLISION_WIDTH / 2.0;
+        int minX = (int) Math.floor(newPos[0] - halfWidth);
+        int maxX = (int) Math.floor(newPos[0] + halfWidth);
+        int minY = (int) Math.floor(newPos[1]);
+        int maxY = (int) Math.floor(newPos[1] + COLLISION_HEIGHT);
+        int minZ = (int) Math.floor(newPos[2] - halfWidth);
+        int maxZ = (int) Math.floor(newPos[2] + halfWidth);
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    BlockType block = getBlock(x, y, z);
+                    if (block != null && block != BlockType.AIR) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private double[] adjustMovementForCollision(double[] movement) {
+        double[] newPos = playerPos.clone();
+
+        // Check X-axis
+        newPos[0] += movement[0];
+        if (checkCollision(newPos)) {
+            newPos[0] = playerPos[0];
+        }
+
+        // Check Y-axis
+        newPos[1] += movement[1];
+        if (checkCollision(newPos)) {
+            // newPos[1] = newPos[1] < playerPos[1] ? Math.floor(newPos[1]) + 1 :
+            // playerPos[1];
+            if (newPos[1] < playerPos[1]) {
+                newPos[1] = Math.floor(newPos[1]) + 1;
+                gravityVelocity = 0;
+            } else {
+                newPos[1] = playerPos[1];
+            }
+        }
+
+        // Check Z-axis
+        newPos[2] += movement[2];
+        if (checkCollision(newPos)) {
+            newPos[2] = playerPos[2];
+        }
+
+        return new double[] {
+                newPos[0] - playerPos[0],
+                newPos[1] - playerPos[1],
+                newPos[2] - playerPos[2]
+        };
+    }
+
     // raycasting using Amanatides-Woo algorithm
     // returnAdjacent - if false, returns the block hit by the ray
     // returnAdjacent - if true, returns the block adjacent to the hit block
-    public int[] raycastBlock(boolean returnAdjacent) {
+    public int[] raycastBlock(double[] origin, double[] vec, double range, boolean returnAdjacent) {
         // Starting position and direction
-        double[] origin = cameraPos.clone();
         double[] direction = frontVector.clone();
 
         // Current voxel coordinates
@@ -649,7 +776,7 @@ class Game implements Clerk {
         double totalDistance = 0.0;
 
         // Traverse the voxel grid
-        while (totalDistance < MAX_REACH) {
+        while (totalDistance < range) {
             // Find axis with smallest tMax
             int axis = 0;
             if (tMax[0] > tMax[1])
@@ -666,13 +793,13 @@ class Game implements Clerk {
             tMax[axis] += tDelta[axis];
 
             // Check if new voxel contains a block
-            if (getBlock(currentVoxel[0], currentVoxel[1], currentVoxel[2]) != BlockType.AIR) {
+            if (!(getBlock(currentVoxel[0], currentVoxel[1], currentVoxel[2]) == BlockType.AIR
+                    || getBlock(currentVoxel[0], currentVoxel[1], currentVoxel[2]) == null)) {
                 return returnAdjacent ? prevVoxel : currentVoxel.clone();
             }
         }
 
         // No block found within range
-        System.out.println("no block in range");
         return null;
     }
 }

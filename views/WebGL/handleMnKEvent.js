@@ -1,6 +1,10 @@
 const mnKEvent = {
     // set of currently pressed keys
     activeKeys: new Set(),
+    // Add properties for batching mouse movements
+    mouseDeltaX: 0,
+    mouseDeltaY: 0,
+    mouseTimeoutId: null,
 
     init: function() {
         // Add key listeners
@@ -28,21 +32,29 @@ const mnKEvent = {
         const key = event.key.toUpperCase();
 
         // Prevent default behavior for game controls ('R' because i use colemak layout)
-        if (['W', 'A', 'S', 'D', ' ', 'R', 'C'].includes(key)) {
+        if (['W', 'A', 'S', 'D', ' ', 'R', 'C', '1', '2', '3',].includes(key)) {
             event.preventDefault();
         }
 
-        this.activeKeys.add(key);
-
-        this.sendUpdateKey({
-            keys: Array.from(this.activeKeys)
-        });
+        if (key === 'W' || key === 'A' || key === 'S' || key === 'D' || key === ' ' || key === 'R' || key === 'C' || key === '1' || key === '2' || key === '3') {
+            if (!this.activeKeys.has(key)) {
+                this.sendUpdateKey({
+                    keyDown: key
+                });
+                this.activeKeys.add(key);
+            }
+        }
     },
 
     handleKeyUp: function(event) {
         const key = event.key.toUpperCase();
 
-        this.activeKeys.delete(key);
+        if (key === 'W' || key === 'A' || key === 'S' || key === 'D' || key === ' ' || key === 'R' || key === 'C' || key === '1' || key === '2' || key === '3') {
+                this.sendUpdateKey({
+                    keyUp: key
+                });
+                this.activeKeys.delete(key);
+        }
     },
 
     handleMouseDown: function(event) {
@@ -55,11 +67,23 @@ const mnKEvent = {
 
     handleMouseMove: function(event) {
         if (document.pointerLockElement) {
-            const mouseData = {
-                mouseMoveX: event.movementX,
-                mouseMoveY: event.movementY,
-            };
-            this.sendUpdateMouse(mouseData);
+            // Accumulate mouse deltas
+            this.mouseDeltaX += event.movementX;
+            this.mouseDeltaY += event.movementY;
+
+            // Schedule send if not already pending
+            if (!this.mouseTimeoutId) {
+                this.mouseTimeoutId = setTimeout(() => {
+                    this.sendUpdateMouse({
+                        mouseMoveX: this.mouseDeltaX,
+                        mouseMoveY: this.mouseDeltaY
+                    });
+                    // Reset accumulators and timeout ID
+                    this.mouseDeltaX = 0;
+                    this.mouseDeltaY = 0;
+                    this.mouseTimeoutId = null;
+                }, 64); // Minimum 32ms delay
+            }
         }
     },
 

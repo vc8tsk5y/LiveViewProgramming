@@ -23,6 +23,13 @@ public class VectorUtils {
         };
     }
 
+    public static double vecLength(double[] vec) {
+        if (vec == null || vec.length != 3) {
+            throw new IllegalArgumentException("Vector must be a 3D vector.");
+        }
+        return Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+    }
+
     public static double[] normalize(double[] vector) {
         if (vector == null || vector.length == 0) {
             throw new IllegalArgumentException("Vector cannot be null or empty");
