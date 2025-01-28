@@ -1,3 +1,4 @@
+// mnKEvent
 const mnKEvent = {
     // set of currently pressed keys
     activeKeys: new Set(),
@@ -31,7 +32,7 @@ const mnKEvent = {
     handleKeyDown: function(event) {
         const key = event.key.toUpperCase();
 
-        // Prevent default behavior for game controls ('R' because i use colemak layout)
+        // Prevent default behavior for game controls ('R' because i use colemak layout BTW)
         if (['W', 'A', 'S', 'D', ' ', 'R', 'C', '1', '2', '3',].includes(key)) {
             event.preventDefault();
         }
@@ -82,7 +83,7 @@ const mnKEvent = {
                     this.mouseDeltaX = 0;
                     this.mouseDeltaY = 0;
                     this.mouseTimeoutId = null;
-                }, 64); // Minimum 32ms delay
+                }, 64); // delay in ms
             }
         }
     },
@@ -119,3 +120,4 @@ const mnKEvent = {
     }
 }
 mnKEvent.init();
+// mnKEvent

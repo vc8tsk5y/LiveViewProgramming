@@ -118,6 +118,47 @@ class WebGL {
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     }
 
+    render() {
+        const gl = this.gl;
+
+        mat4.perspective(
+            this.matProj,
+            /* fovy= */ glMatrix.toRadian(90),
+            /* aspectRatio= */ this.canvas.width / this.canvas.height,
+            /* near, far= */ 0.1, 100.0
+        );
+
+        // Calculate lookAt point by adding front vector to position
+        const lookAtPoint = vec3.create();
+        vec3.add(lookAtPoint, this.camera.position, this.camera.front);
+
+        mat4.lookAt(
+            this.matView,
+            this.camera.position,
+            lookAtPoint,
+            this.camera.up
+        );
+
+        mat4.multiply(this.matViewProj, this.matProj, this.matView);
+
+        gl.clearColor(0.47, 0.65, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+        gl.useProgram(this.program);
+
+        gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
+
+        this.blocksMap.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
+
+        // Draw the crosshair (after other objects)
+        this.drawCrosshair();
+    }
+
     async loadTexture(name, imageUrl) {
         const gl = this.gl;
 
@@ -181,46 +222,8 @@ class WebGL {
         }
     }
 
-    render() {
-        const gl = this.gl;
 
-        mat4.perspective(
-            this.matProj,
-            /* fovy= */ glMatrix.toRadian(90),
-            /* aspectRatio= */ this.canvas.width / this.canvas.height,
-            /* near, far= */ 0.1, 100.0
-        );
 
-        // Calculate lookAt point by adding front vector to position
-        const lookAtPoint = vec3.create();
-        vec3.add(lookAtPoint, this.camera.position, this.camera.front);
-
-        mat4.lookAt(
-            this.matView,
-            this.camera.position,
-            lookAtPoint,
-            this.camera.up
-        );
-
-        mat4.multiply(this.matViewProj, this.matProj, this.matView);
-
-        gl.clearColor(0.47, 0.65, 1.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        gl.enable(gl.DEPTH_TEST);
-        gl.enable(gl.CULL_FACE);
-        gl.cullFace(gl.BACK);
-        gl.frontFace(gl.CCW);
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-
-        gl.useProgram(this.program);
-
-        gl.uniformMatrix4fv(this.uniforms.matViewProj, false, this.matViewProj);
-
-        this.blocksMap.forEach(shape => shape.draw(gl, this.uniforms.matWorld, this.uniforms));
-
-        // Draw the crosshair (after other objects)
-        this.drawCrosshair();
-    }
 
     setupShaders() {
         this.vertexShaderSourceCode = `#version 300 es

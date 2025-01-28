@@ -14,16 +14,18 @@ class Game implements Clerk {
     private double[] frontVector = { 1, 0, 0 }; // Default looking along x-axis
     private double yaw = 0; // Horizontal rotation (left/right)
     private double pitch = 0; // Vertical rotation (up/down)
-
-    private static final double COLLISION_HEIGHT = 1.8;
-    private static final double COLLISION_WIDTH = 0.6;
-    private static final double CAMERA_HEIGHT = 1.62;
-
     private Set<String> activeKeys = new HashSet<>();
     private BlockType selectedItem = BlockType.DIRT;
     public double mouseSensitivity = 0.02;
     private static final double MOVEMENT_SPEED = 0.1439;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
+    // Player movement
+
+    // collision
+    private static final double COLLISION_HEIGHT = 1.8;
+    private static final double COLLISION_WIDTH = 0.6;
+    private static final double CAMERA_HEIGHT = 1.62;
+    // collision
 
     public double gravityVelocity = 0;
     private static final double GRAVITY = 0.04;
@@ -36,13 +38,14 @@ class Game implements Clerk {
     private long lastUpdateTimeKey = 0;
     private long lastUpdateTimeGravity = 0;
 
-    // World
+    // chunks
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 64;
     private static final int RENDER_DISTANCE = 1; // Number of chunks to render in each direction
     private long currentChunkHash;
     public Map<Long, Chunk> chunks; // private
     private Set<Long> loadedChunks = new HashSet<>();
+    // chunks
 
     // Random world generation
     private final Noise terrainNoise = new Noise(12345);
@@ -59,6 +62,7 @@ class Game implements Clerk {
         this(Clerk.view());
     }
 
+    // initialize webgl
     private void initializeWebGL() {
         Clerk.load(view, "views/WebGL/handleMnKEvent.js");
         Clerk.load(view, "views/WebGL/webGL.js");
@@ -74,6 +78,7 @@ class Game implements Clerk {
             startGameLoop(); // Start the gravity update loop
         });
     }
+    // initialize webgl
 
     public void updateCamera() {
         // rate limiter
@@ -136,6 +141,7 @@ class Game implements Clerk {
                 blockType);
     }
 
+    // chunks
     // Hash utility
     public static long getChunkHash(int x, int z) {
         int chunkX = Math.floorDiv(x, CHUNK_SIZE);
@@ -427,6 +433,7 @@ class Game implements Clerk {
             System.out.println("Visible blocks: " + countVisible);
         }
     }
+    // chunks
 
     // Generate height using Perlin noise
     private int generateHeight(int globalX, int globalZ) {
@@ -497,6 +504,7 @@ class Game implements Clerk {
         }
     }
 
+    // mouseEvent
     public void handleMouseMove() {
         view.createResponseContext("/mouseevent", (data) -> {
             // Parse the incoming JSON data
@@ -526,7 +534,9 @@ class Game implements Clerk {
             updateCamera();
         });
     }
+    // mouseEvent
 
+    // clickEvent
     public void handleClickEvent() {
         view.createResponseContext("/keyevent", (data) -> {
             if (data.contains("mouseDown")) {
@@ -637,6 +647,7 @@ class Game implements Clerk {
             handleChunkRendering();
         }
     }
+    // clickEvent
 
     private void startGameLoop() {
         while (true) {
@@ -672,6 +683,7 @@ class Game implements Clerk {
         return checkCollision(testPos);
     }
 
+    // collision
     private boolean checkCollision(double[] newPos) {
         double halfWidth = COLLISION_WIDTH / 2.0;
         int minX = (int) Math.floor(newPos[0] - halfWidth);
@@ -728,7 +740,9 @@ class Game implements Clerk {
                 newPos[2] - playerPos[2]
         };
     }
+    // collision
 
+    // raycasting
     // raycasting using Amanatides-Woo algorithm
     // returnAdjacent - if false, returns the block hit by the ray
     // returnAdjacent - if true, returns the block adjacent to the hit block
@@ -800,4 +814,5 @@ class Game implements Clerk {
         // No block found within range
         return null;
     }
+    // raycasting
 }

@@ -1,3 +1,4 @@
+// BlockType
 public enum BlockType {
     AIR(0),
     STONE(1),
@@ -23,3 +24,4 @@ public enum BlockType {
         throw new IllegalArgumentException("No BlockType with id: " + id);
     }
 }
+// BlockType
