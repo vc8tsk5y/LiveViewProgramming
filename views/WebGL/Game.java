@@ -16,7 +16,7 @@ class Game implements Clerk {
     private double pitch = 0; // Vertical rotation (up/down)
     private Set<String> activeKeys = new HashSet<>();
     private BlockType selectedItem = BlockType.DIRT;
-    public double mouseSensitivity = 0.02;
+    public double mouseSensitivity = 0.4;
     private static final double MOVEMENT_SPEED = 0.1439;
     private static final double MAX_REACH = 5.0; // Maximum distance player can reach
     // Player movement
@@ -43,7 +43,7 @@ class Game implements Clerk {
     // chunks
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_HEIGHT = 256;
-    private static final int RENDER_DISTANCE = 1; // Number of chunks to render in each direction
+    private static final int RENDER_DISTANCE = 2; // Number of chunks to render in each direction
     private long currentChunkHash;
     private Map<Long, Chunk> chunks; // private
     private Set<Long> loadedChunks = new HashSet<>();
@@ -195,31 +195,31 @@ class Game implements Clerk {
             loadedChunks.add(hash);
 
             // Reload edges of adjacent loaded chunks
-            int newX = hashToChunkCoord(hash)[0];
-            int newZ = hashToChunkCoord(hash)[1];
-
-            long eastHash = getChunkHash((newX + 1) * CHUNK_SIZE, newZ * CHUNK_SIZE);
-            long westHash = getChunkHash((newX - 1) * CHUNK_SIZE, newZ * CHUNK_SIZE);
-            long southHash = getChunkHash(newX * CHUNK_SIZE, (newZ + 1) * CHUNK_SIZE);
-            long northHash = getChunkHash(newX * CHUNK_SIZE, (newZ - 1) * CHUNK_SIZE);
-
-            for (long adjHash : new long[] { eastHash, westHash, southHash, northHash }) {
-                if (loadedChunks.contains(adjHash)) {
-                    int adjX = hashToChunkCoord(adjHash)[0];
-                    int adjZ = hashToChunkCoord(adjHash)[1];
-                    String direction = "";
-                    if (adjX == newX + 1)
-                        direction = "WEST";
-                    else if (adjX == newX - 1)
-                        direction = "EAST";
-                    else if (adjZ == newZ + 1)
-                        direction = "NORTH";
-                    else if (adjZ == newZ - 1)
-                        direction = "SOUTH";
-                    if (!direction.isEmpty())
-                        reloadChunkEdge(adjHash, direction);
-                }
-            }
+            // int newX = hashToChunkCoord(hash)[0];
+            // int newZ = hashToChunkCoord(hash)[1];
+            //
+            // long eastHash = getChunkHash((newX + 1) * CHUNK_SIZE, newZ * CHUNK_SIZE);
+            // long westHash = getChunkHash((newX - 1) * CHUNK_SIZE, newZ * CHUNK_SIZE);
+            // long southHash = getChunkHash(newX * CHUNK_SIZE, (newZ + 1) * CHUNK_SIZE);
+            // long northHash = getChunkHash(newX * CHUNK_SIZE, (newZ - 1) * CHUNK_SIZE);
+            //
+            // for (long adjHash : new long[] { eastHash, westHash, southHash, northHash }) {
+            //     if (loadedChunks.contains(adjHash)) {
+            //         int adjX = hashToChunkCoord(adjHash)[0];
+            //         int adjZ = hashToChunkCoord(adjHash)[1];
+            //         String direction = "";
+            //         if (adjX == newX + 1)
+            //             direction = "WEST";
+            //         else if (adjX == newX - 1)
+            //             direction = "EAST";
+            //         else if (adjZ == newZ + 1)
+            //             direction = "NORTH";
+            //         else if (adjZ == newZ - 1)
+            //             direction = "SOUTH";
+            //         if (!direction.isEmpty())
+            //             reloadChunkEdge(adjHash, direction);
+            //     }
+            // }
         }
 
         // only unload chunks that are not in the new load set
@@ -358,10 +358,10 @@ class Game implements Clerk {
     private boolean isVisible(int x, int y, int z) {
         boolean top = getBlock(x, y + 1, z) == BlockType.AIR;
         boolean btm = getBlock(x, y - 1, z) == BlockType.AIR;
-        boolean rgt = chunks.get(getChunkHash(x + 1, z)) == null || getBlock(x + 1, y, z) == BlockType.AIR;
-        boolean lft = chunks.get(getChunkHash(x - 1, z)) == null || getBlock(x - 1, y, z) == BlockType.AIR;
-        boolean frt = chunks.get(getChunkHash(x, z + 1)) == null || getBlock(x, y, z + 1) == BlockType.AIR;
-        boolean bck = chunks.get(getChunkHash(x, z - 1)) == null || getBlock(x, y, z - 1) == BlockType.AIR;
+        boolean rgt = getBlock(x + 1, y, z) == BlockType.AIR;
+        boolean lft = getBlock(x - 1, y, z) == BlockType.AIR;
+        boolean frt = getBlock(x, y, z + 1) == BlockType.AIR;
+        boolean bck = getBlock(x, y, z - 1) == BlockType.AIR;
         return top || btm || rgt || lft || frt || bck;
     }
 
