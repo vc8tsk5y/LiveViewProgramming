@@ -617,7 +617,7 @@ class Game implements Clerk {
                     movementVec[0] += frontVector[0] * MOVEMENT_SPEED;
                     movementVec[2] += frontVector[2] * MOVEMENT_SPEED;
                     break;
-                case "r": // Backward
+                case "s": // Backward
                     movementVec[0] -= frontVector[0] * MOVEMENT_SPEED;
                     movementVec[2] -= frontVector[2] * MOVEMENT_SPEED;
                     break;
@@ -625,7 +625,7 @@ class Game implements Clerk {
                     movementVec[0] -= rightVector[0] * MOVEMENT_SPEED;
                     movementVec[2] -= rightVector[2] * MOVEMENT_SPEED;
                     break;
-                case "s": // Strafe right
+                case "d": // Strafe right
                     movementVec[0] += rightVector[0] * MOVEMENT_SPEED;
                     movementVec[2] += rightVector[2] * MOVEMENT_SPEED;
                     break;
